@@ -1,0 +1,28 @@
+data_groups:
+    imagenet:
+        snakes:
+            - 54  # hognose_snake
+            - 60  # night_snake
+            - 62  # rock_python
+            - 66  # horned_viper
+            - 67  # diamondback
+            - 68  # sidewinder
+        insects:
+            - 304 # leaf beetle
+            - 310 # ant
+            - 311 # grasshopper
+            - 312 # cricket
+            - 313 # walking stick
+            - 314 # cockroach
+            - 315 # mantis
+            - 316 # cicada
+            - 317 # leafhopper
+            - 318 # lacewing
+            - 319 # dragonfly
+
+inaturalist_params:
+    taxon_name: 'Trochilidae'  # Hummingbirds family
+    quality_grade: 'research'
+    photo_license: 'CC0,CC-BY,CC-BY-NC'
+    per_page: 100
+    page: 1

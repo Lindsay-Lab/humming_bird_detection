@@ -1,0 +1,26 @@
+# Workflow parameters - running rule all
+model_name:
+  - AlexNet
+seed: "0000"
+model_args:
+  tsteps: 1
+
+data_name: imagenet
+
+data_group: "snakes"  # imagenet
+
+experiment: 
+  - stability
+  - contrast
+  - noiseadaption
+
+# Training parameters
+train_ratio: 0.8
+loss: 
+  - CrossEntropyLoss
+loss_weight:
+  - 1
+optimizer: Adam
+learning_rate: 0.005
+epochs: 50
+batch_size: 1028

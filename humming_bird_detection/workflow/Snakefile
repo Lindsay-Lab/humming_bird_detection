@@ -1,0 +1,5 @@
+include: "snake_utils.smk"
+
+rule all:
+    input:
+        project_paths.reports / ...
