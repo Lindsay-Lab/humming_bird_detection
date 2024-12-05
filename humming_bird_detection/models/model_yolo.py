@@ -1,7 +1,4 @@
-from pathlib import Path
-
 import pytorch_lightning as pl
-import torch
 from PIL import Image
 from ultralytics import YOLO
 
@@ -29,7 +26,7 @@ class BirdYOLO(pl.LightningModule):
         self._load_pretrained_model(yolo_version=self.yolo_version)
 
         # Edit the architecture to fit the number of classes
-        self._customize_architecturen(n_classes=self.n_classes)
+        self._customize_architecture(n_classes=self.n_classes)
         
         # make all parameters trainable
         self.trainable_parameter_names = [p for p in list(self.state_dict().keys())]
@@ -40,50 +37,22 @@ class BirdYOLO(pl.LightningModule):
         self.model = YOLO(pretrained_path)
         return None
         
-    def _customize_architecturen(self, n_classes: int) -> None:
+    def _customize_architecture(self, n_classes: int) -> None:
+        detect_module = self.model._modules['model']._modules['model'][-1]        
         pass
         return None
     
     def forward(self, x):
         return self.model(x)
         
-    def configure_optimizers(self, recurrence_lr_factor=0.1):
-        optimizer_class = getattr(torch.optim, self.optimizer)
-
-        lr = getattr(self, "lr", getattr(self, "learning_rate", None))
-
-        # Reduce the learning rate for the recurrence weights
-        lr_recurrence = lr * recurrence_lr_factor
-
-        # Split the parameters into recurrent and non-recurrent
-        recurrence_params, params = [], []
-
-        self.print_trainable_parameter_names()
-
-        for name, param in self.named_parameters():
-            if name in self.trainable_parameter_names:
-                if "recurrence" in name:
-                    recurrence_params.append(param)
-                else:
-                    params.append(param)
-
-        # Create the optimizers
-        params_args = [{"params": params}]
-        if recurrence_params:
-            params_args.append({"params": recurrence_params, "lr": lr_recurrence})
-
-        self.optimizer = optimizer_class(params_args, lr=lr)
-
-        return super(BirdYOLO, self).configure_optimizers()
-
-
+        
 if __name__ == "__main__":
     model = BirdYOLO(n_classes=80)
 
     # Load image from example_image_path
     image_number = 253176611    # 1 bottle with 2 birds
-    # image_number = 253160453    # bird    
-    example_image_path = Path(f"/home/rgutzen/Projects/humming_bird_detection/data/raw/Trochilidae/{image_number}.jpg")
+    image_number = 253160453    # bird    
+    example_image_path = project_paths.data.raw / 'Trochilidae' / 'images' / f"{image_number}.jpg"
     example_image = Image.open(example_image_path)
 
     # Pass the image through the model
@@ -92,3 +61,10 @@ if __name__ == "__main__":
     for result in output:
         print(result.boxes)  # Print detection boxes
         result.show()  # Display the annotated image
+    
+    # fine_output = model.model.train(
+    #     data=project_paths.data.interim / 'finetune_data.yaml',
+    #     epochs=5,
+    #     imgsz=640
+    # )
+    
