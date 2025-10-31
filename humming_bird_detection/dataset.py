@@ -5,11 +5,9 @@ from loguru import logger
 from roboflow import Roboflow
 
 try:
-    from humming_bird_detection.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, LOGS_DIR
+    from humming_bird_detection.config import LOGS_DIR
 except Exception:
     LOGS_DIR = Path("logs")
-    PROCESSED_DATA_DIR = Path("data/processed")
-    RAW_DATA_DIR = Path("data/raw")
 
 def setup_logging() -> None:
     logger.remove()
@@ -47,7 +45,7 @@ def validate_download(dataset):
 
     return dl_path
 
-def download_dataset(api_key, output_dir = RAW_DATA_DIR):
+def download_dataset(api_key):
     logger.info(f"Connecting to Roboflow")
     rf = Roboflow(api_key=api_key)
     rf = Roboflow(api_key="emHcbgLhITmU2KHvC6I7")
@@ -58,7 +56,6 @@ def download_dataset(api_key, output_dir = RAW_DATA_DIR):
 
 def main():
     setup_logging()
-    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
     api_key = os.getenv("ROBOFLOW_API_KEY", "emHcbgLhITmU2KHvC6I7")
     return download_dataset(api_key)
 

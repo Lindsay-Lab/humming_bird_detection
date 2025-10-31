@@ -1,3 +1,6 @@
 loguru
 pytest
 roboflow
+Pillow
+ultralytics
+tqdm
