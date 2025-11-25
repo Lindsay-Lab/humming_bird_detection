@@ -4,3 +4,4 @@ roboflow
 Pillow
 ultralytics
 tqdm
+PyYAML
