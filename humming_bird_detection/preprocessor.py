@@ -24,12 +24,9 @@ IMG_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff")
 ROBoflow_SPLIT_CANDIDATES = ("train_hb", "valid_hb", "val_hb", "test_hb", "train", "valid", "val", "test")
 
 def setup_logging() -> None:
-    logger.remove()
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    logger.add(lambda msg: print(msg, end=""),
-               format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:>8}</level> | <cyan>{message}</cyan>",
-               level="INFO")
-    logger.add(LOGS_DIR / "preprocess_yolo.log", level="INFO")
+    logger.remove()
+    logger.add(LOGS_DIR / "preprocess_yolo.log", level="INFO", format="<green>{time}</green> | <level>{level:>8}</level> | <cyan>{message}</cyan>")
 
 def find_image_for_stem(img_dir: Path, stem: str) -> Optional[Path]:
     for ext in IMG_EXTS:
@@ -42,7 +39,6 @@ def safe_mkdir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 def read_yolo_file(lbl: Path) -> List[List[float]]:
-    """Return list of [cls, xc, yc, w, h] for file; empty list if missing/empty."""
     if not lbl.exists():
         return []
     out = []
@@ -59,7 +55,6 @@ def read_yolo_file(lbl: Path) -> List[List[float]]:
     return out
 
 def try_load_data_yaml_names(root: Path) -> Dict[int, str]:
-    """Try to load data.yaml under root to map original class ids to names."""
     try:
         import yaml
     except Exception:
@@ -87,7 +82,8 @@ class PrepConfig:
     hummingbird_name_hints: Tuple[str, ...] = ("humming", "hummingbird")
     final_img_ext: str = ".jpg"
     train_ratio: float = 0.8
-    test_ratio: float = 0.2
+    val_ratio: float = 0.1
+    test_ratio: float = 0.1
 
 class YoloPreprocessor:
     def __init__(self, raw_root: Path, out_root: Path, cfg: PrepConfig):
@@ -97,17 +93,18 @@ class YoloPreprocessor:
 
     @staticmethod
     def iter_pairs(img_dir: Path, lbl_dir: Path) -> Iterable[Tuple[Path, Path]]:
+        yielded = set()
         if lbl_dir.exists():
             for lbl in lbl_dir.glob("*.txt"):
                 img = find_image_for_stem(img_dir, lbl.stem)
                 if img:
+                    yielded.add(img.stem)
                     yield img, lbl
         if img_dir.exists():
             for img in img_dir.glob("*"):
-                if img.is_file() and img.suffix.lower() in IMG_EXTS:
-                    lbl = lbl_dir / (img.stem + ".txt")
-                    if not lbl.exists():
-                        yield img, lbl 
+                if img.suffix.lower() in IMG_EXTS and img.stem not in yielded:
+                    lbl = lbl_dir / f"{img.stem}.txt"
+                    yield img, lbl
 
     def resolve_hummingbird_ids(self) -> set[int]:
         if self.cfg.hummingbird_ids:
@@ -203,41 +200,54 @@ class YoloPreprocessor:
         manifest = sorted(manifest)
         pairs_final = [(interim_img / (p.stem + self.cfg.final_img_ext), p) for p in manifest if (interim_img / (p.stem + self.cfg.final_img_ext)).exists()]
 
+        split_map: Dict[str, List[Tuple[Path, Path]]] = {"train": [], "val": [], "test": []}
+
         if split_present:
             try:
-                split_map = {"train": [], "test": []}
                 raw_stem_to_split = {}
                 for name in ROBoflow_SPLIT_CANDIDATES:
                     p = self.raw_root / name
                     if not p.exists():
                         continue
+                    if name.lower().startswith("train"):
+                        normalized = "train"
+                    elif name.lower().startswith(("valid", "val")):
+                        normalized = "val"
+                    else:
+                        normalized = "test"
                     for img in (p / "images").glob("*"):
                         if img.suffix.lower() in IMG_EXTS:
-                            raw_stem_to_split[img.stem] = name
+                            raw_stem_to_split[img.stem] = normalized
+                fallback = []
                 for img_path, lbl_path in pairs_final:
                     st = img_path.stem
-                    raw_split = raw_stem_to_split.get(st)
-                    if raw_split and raw_split.lower().startswith("train"):
-                        split_map["train"].append((img_path, lbl_path))
+                    mapped = raw_stem_to_split.get(st)
+                    if mapped:
+                        split_map[mapped].append((img_path, lbl_path))
                     else:
-                        split_map["test"].append((img_path, lbl_path))
+                        fallback.append((img_path, lbl_path))
+                if fallback:
+                    random.shuffle(fallback)
+                    split_map["val"].extend(fallback)
                 if not split_map["train"]:
-                    raise RuntimeError("No train mapping inferred; fallback to random split")
-                train_pairs = split_map["train"]
-                test_pairs = split_map["test"]
+                    raise RuntimeError("Mirroring raw splits failed to produce a train set; fallback to deterministic split.")
             except Exception:
                 logger.warning("Could not mirror raw split boundaries; falling back to deterministic random split.")
                 random.shuffle(pairs_final)
                 n = len(pairs_final)
                 n_train = int(self.cfg.train_ratio * n)
-                train_pairs = pairs_final[:n_train]
-                test_pairs = pairs_final[n_train:]
+                n_val = int(self.cfg.val_ratio * n)
+                split_map["train"] = pairs_final[:n_train]
+                split_map["val"] = pairs_final[n_train:n_train+n_val]
+                split_map["test"] = pairs_final[n_train+n_val:]
         else:
             random.shuffle(pairs_final)
             n = len(pairs_final)
             n_train = int(self.cfg.train_ratio * n)
-            train_pairs = pairs_final[:n_train]
-            test_pairs = pairs_final[n_train:]
+            n_val = int(self.cfg.val_ratio * n)
+            split_map["train"] = pairs_final[:n_train]
+            split_map["val"] = pairs_final[n_train:n_train+n_val]
+            split_map["test"] = pairs_final[n_train+n_val:]
 
         def materialize(pairs: List[Tuple[Path, Path]], split: str) -> int:
             out_img = final_root / split / "images"
@@ -256,17 +266,19 @@ class YoloPreprocessor:
                     shutil.copy2(lbl, dst_lbl)
             return len(pairs)
 
-        n_tr = materialize(train_pairs, "train")
-        n_te = materialize(test_pairs, "test")
-        logger.success(f"Final split → train:{n_tr} | test:{n_te}")
+        split_counts = {}
+        for split_name, pairs in split_map.items():
+            n = materialize(pairs, split_name)
+            split_counts[split_name] = n
+        logger.success("Final splits → " + " | ".join(f"{k}:{v}" for k,v in split_counts.items()))
 
         data_yaml = final_root / "data.yaml"
-        data_yaml.write_text(
-            f"path: {final_root.resolve()}\n"
-            "train: train/images\n"
-            "test: test/images\n"
-            "names:\n  0: hummingbird\n  1: no_hummingbird\n"
-        )
+        lines = [f"path: {final_root.resolve()}"]
+        lines.append("train: train/images")
+        lines.append("val: val/images")
+        lines.append("test: test/images")
+        lines.append("names:\n  0: hummingbird\n  1: no_hummingbird")
+        data_yaml.write_text("\n".join(lines))
         logger.success(f"Wrote {data_yaml}")
 
         self.sanity_checks(final_root)
@@ -274,7 +286,7 @@ class YoloPreprocessor:
         return final_root
 
     def sanity_checks(self, final_root: Path) -> None:
-        for split in ("train", "test"):
+        for split in ("train", "val", "test"):
             img_dir = final_root / split / "images"
             lbl_dir = final_root / split / "labels"
             if not img_dir.exists() or not lbl_dir.exists():
