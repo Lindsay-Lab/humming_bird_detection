@@ -1,22 +1,27 @@
 name: humming-bird-detection
 channels:
+  - pytorch
+  - nvidia
   - conda-forge
 dependencies:
-  - python=0.0.1
-  - pip
-  - typer
-  - loguru
-  - tqdm
-  - ipython
-  - jupyterlab
-  - matplotlib
-  - notebook
+  - python=3.10
+  - pytorch
+  - torchvision
+  - pytorch-cuda=12.1
   - numpy
+  - scipy
   - pandas
-  - scikit-learn
-  - ruff
+  - matplotlib
+  - pillow
+  - pyyaml
+  - tqdm
+  - loguru
+  - jupyterlab
   - pytest
+  - pip
+
   - pip:
-    - python-dotenv
-    - mkdocs
-    - -e .
+      - roboflow==1.2.11
+      - polars
+      - psutil
+      - ultralytics-thop

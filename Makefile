@@ -3,75 +3,65 @@
 #################################################################################
 
 PROJECT_NAME = humming-bird-detection
-PYTHON_VERSION = 0.0.1
+VERSION = 0.0.1
 PYTHON_INTERPRETER = python
+
+SHELL := /bin/bash
+ENV_NAME := hb-yolo
+ENV_FILE := environment.yml
+# PHONY TARGETS                                                                 #
+#################################################################################
+
+.PHONY: clean test env install check all conda-clean help conda-setup
 
 #################################################################################
 # COMMANDS                                                                      #
 #################################################################################
 
-
-## Install Python dependencies
-.PHONY: requirements
-requirements:
-	conda env update --name $(PROJECT_NAME) --file environment.yml --prune
-	
-
-
-
 ## Delete all compiled Python files
-.PHONY: clean
 clean:
 	find . -type f -name "*.py[co]" -delete
 	find . -type d -name "__pycache__" -delete
 
-
-## Lint using ruff (use `make format` to do formatting)
-.PHONY: lint
-lint:
-	ruff format --check
-	ruff check
-
-## Format source code with ruff
-.PHONY: format
-format:
-	ruff check --fix
-	ruff format
-
-
-
 ## Run tests
-.PHONY: test
 test:
-	python -m pytest tests
+	source "$$(conda info --base)/etc/profile.d/conda.sh" && \
+	  conda activate $(ENV_NAME) && \
+	  python -m pytest tests
 
+## Optional: global conda cleanup (cache)
+conda-clean:
+	conda clean --all --yes
 
-## Set up Python interpreter environment
-.PHONY: create_environment
-create_environment:
-	conda env create --name $(PROJECT_NAME) -f environment.yml
-	
-	@echo ">>> conda env created. Activate with:\nconda activate $(PROJECT_NAME)"
-	
+## One-time recommended conda config (solver + channels)
+conda-setup:
+	conda config --set solver libmamba
+	conda config --set channel_priority strict
 
+## Create or update the conda environment
+env:
+	conda env create -f $(ENV_FILE) || conda env update -f $(ENV_FILE) --prune
 
+## Run your pip installs (ultralytics --no-deps, etc.) inside the env
+install:
+	source "$$(conda info --base)/etc/profile.d/conda.sh" && \
+	  conda activate $(ENV_NAME) && \
+	  ./install_packages.sh
 
-#################################################################################
-# PROJECT RULES                                                                 #
-#################################################################################
+## Run environment checks
+check:
+	source "$$(conda info --base)/etc/profile.d/conda.sh" && \
+	  conda activate $(ENV_NAME) && \
+	  python check_env.py
 
-
-## Make dataset
-.PHONY: data
-data: requirements
-	$(PYTHON_INTERPRETER) humming_bird_detection/dataset.py
-
+## Full setup: create/update env + install pip deps + run checks
+all: env install check
 
 #################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
 
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL := all
 
 define PRINT_HELP_PYSCRIPT
 import re, sys; \
