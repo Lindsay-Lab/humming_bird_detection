@@ -48,11 +48,11 @@ def validate_download(dataset):
 def download_dataset(api_key):
     logger.info(f"Connecting to Roboflow")
     rf = Roboflow(api_key=api_key)
-    rf = Roboflow(api_key="emHcbgLhITmU2KHvC6I7")
     project = rf.workspace("humming-bird-detection").project("label-birdfeeder-camera-observations")
     version = project.version(3)
     dataset = version.download("yolov8")
-    validate_download(dataset)
+    dl_path = validate_download(dataset)
+    return dl_path
 
 def main():
     setup_logging()

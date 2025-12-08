@@ -10,12 +10,7 @@ from PIL import Image, ImageOps
 from loguru import logger
 from tqdm import tqdm
 
-try:
-    from humming_bird_detection.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, LOGS_DIR
-except Exception:
-    LOGS_DIR = Path("logs")
-    PROCESSED_DATA_DIR = Path("data/processed")
-    RAW_DATA_DIR = Path("Label-Birdfeeder-Camera-Observations-3")
+from humming_bird_detection.config import PROCESSED_DATA_DIR, RAW_DATA_DIR, LOGS_DIR
 
 RANDOM_SEED = 42
 random.seed(RANDOM_SEED)
@@ -315,7 +310,7 @@ def main():
     setup_logging()
     PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
     RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
-
+    logger.info(f"RAW_DATA_DIR = {RAW_DATA_DIR}")
     cfg = PrepConfig()
 
     preprocessor = YoloPreprocessor(RAW_DATA_DIR, PROCESSED_DATA_DIR, cfg)

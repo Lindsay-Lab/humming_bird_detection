@@ -7,11 +7,12 @@ from loguru import logger
 load_dotenv()
 
 # Paths
-PROJ_ROOT = Path(__file__).resolve().parents[1]
+THIS_PACKAGE_ROOT = Path(__file__).resolve().parent
+PROJ_ROOT = THIS_PACKAGE_ROOT.parent
 logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
 
 LOGS_DIR = PROJ_ROOT / "logs"
-RAW_DATA_DIR = PROJ_ROOT / "Label-Birdfeeder-Camera-Observations-3"
+RAW_DATA_DIR = THIS_PACKAGE_ROOT / "Label-Birdfeeder-Camera-Observations-3"
 DATA_DIR = PROJ_ROOT / "data"
 INTERIM_DATA_DIR = DATA_DIR / "interim"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
