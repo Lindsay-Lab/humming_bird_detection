@@ -11,7 +11,7 @@ from loguru import logger
 from PIL import Image, ImageOps
 from tqdm import tqdm
 
-from humming_bird_detection.config import LOGS_DIR, PROCESSED_DATA_DIR, RAW_DATA_DIR
+from humming_bird_detection.configs.paths import LOGS_DIR, PROCESSED_DATA_DIR, RAW_DATA_DIR
 
 RANDOM_SEED = 42
 random.seed(RANDOM_SEED)

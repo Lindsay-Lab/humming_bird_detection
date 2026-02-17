@@ -3,26 +3,8 @@ import os
 from datetime import datetime
 from loguru import logger
 from roboflow import Roboflow
-
-try:
-    from humming_bird_detection.config import LOGS_DIR
-except Exception:
-    LOGS_DIR = Path("logs")
-
-def setup_logging() -> None:
-    logger.remove()
-    logger.add(
-        sink=lambda msg: print(msg, end=""),
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:>8}</level> | <cyan>{message}</cyan>",
-        level="INFO",
-        enqueue=True,
-    )
-    slurm_job_id = os.getenv("SLURM_JOB_ID")
-    if slurm_job_id:
-        LOGS_DIR.mkdir(parents=True, exist_ok=True)
-        log_file = LOGS_DIR / f"rf_download_{datetime.now():%Y%m%d_%H%M%S}_job{slurm_job_id}.log"
-        logger.add(log_file, enqueue=True,)
-        logger.info(f"File logging enabled: {log_file.resolve()}")
+from humming_bird_detection.utils.logging import setup_logging
+from humming_bird_detection.configs.paths import LOGS_DIR
 
 def validate_download(dataset):
     dl_path = Path(getattr(dataset, "location", ".")).resolve()
@@ -55,7 +37,7 @@ def download_dataset(api_key):
     return dl_path
 
 def main():
-    setup_logging()
+    setup_logging(LOGS_DIR, name="rf_download", level="INFO")
     api_key = os.getenv("ROBOFLOW_API_KEY", "emHcbgLhITmU2KHvC6I7")
     return download_dataset(api_key)
 

@@ -4,7 +4,7 @@ from loguru import logger
 from tqdm import tqdm
 import typer
 
-from humming_bird_detection.config import PROCESSED_DATA_DIR
+from humming_bird_detection.configs.paths import PROCESSED_DATA_DIR
 
 app = typer.Typer()
 

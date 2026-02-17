@@ -1,1 +1,1 @@
-from humming_bird_detection import config  # noqa: F401
+# humming_bird_detection package
