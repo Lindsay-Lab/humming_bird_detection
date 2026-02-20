@@ -1,0 +1,247 @@
+{
+  "metadata": {
+    "analysis_timestamp": "2026-02-20T09:14:08.167901",
+    "dataset_path": "H:\\github-projects\\humming_bird_detection\\humming_bird_detection\\data\\raw\\Label Birdfeeder Camera Observations.v3i.yolov11",
+    "total_images_analyzed": 9423,
+    "fast_mode_used": false,
+    "parallel_workers_used": 4
+  },
+  "dataset_statistics": {
+    "total_images": 9423,
+    "positive_images": 4362,
+    "background_images": 5061,
+    "background_ratio": 0.5370900986946833,
+    "positive_to_background_ratio": 1.1602475928473177,
+    "image_load_success_rate": 1.0,
+    "missing_label_files": 0
+  },
+  "file_analysis": {
+    "formats": {
+      "JPEG": 9423
+    },
+    "format_distribution_percentages": {
+      "JPEG": 100.0
+    },
+    "file_size_stats": {
+      "median_mb": 2.61126708984375,
+      "mean_mb": 2.72793361061029,
+      "std_mb": 0.3749903541864897,
+      "min_mb": 1.311518669128418,
+      "max_mb": 4.351140975952148,
+      "q25_mb": 2.5199766159057617,
+      "q75_mb": 2.7545113563537598
+    },
+    "large_files": {
+      "count_10mb_plus": 0,
+      "count_50mb_plus": 0,
+      "percentage_10mb_plus": 0.0
+    }
+  },
+  "image_properties": {
+    "resolution_stats": {
+      "median_width": 8704,
+      "median_height": 4896,
+      "median_megapixels": 42.614784,
+      "width_range": [
+        8704,
+        8704
+      ],
+      "height_range": [
+        4896,
+        4896
+      ]
+    },
+    "aspect_ratio_stats": {
+      "median": 1.7777777777777777,
+      "mean": 1.7777777777777786,
+      "std": 8.88225551670744e-16
+    },
+    "exif_analysis": {
+      "present_rate_sampled": 0.0,
+      "fix_needed_rate_sampled": 0.0,
+      "orientation_distribution": {
+        "null": "9423"
+      }
+    },
+    "image_quality": {
+      "brightness_stats": {
+        "mean": 88.88077594636036,
+        "std": 9.266834740223125,
+        "min": 13.9349365234375,
+        "max": 115.94429016113281,
+        "q25": 83.10395812988281,
+        "q75": 95.34199523925781
+      },
+      "blur_stats": {
+        "mean": 1437.2609378134991,
+        "std": 738.2980276505392,
+        "min": 555.3029174804688,
+        "max": 5464.9384765625,
+        "q25": 1042.6617431640625,
+        "q75": 1495.9185791015625
+      }
+    }
+  },
+  "box_analysis": {
+    "total_boxes": 4617,
+    "area_statistics": {
+      "median_normalized": 0.07363055037425509,
+      "mean_normalized": 0.08884687648137769,
+      "std_normalized": 0.07474656904807794,
+      "min_normalized": 0.0,
+      "max_normalized": 0.7532458688515234,
+      "q10_normalized": 0.01982285985821259,
+      "q25_normalized": 0.0325457609476561,
+      "q75_normalized": 0.11880301641327104,
+      "q90_normalized": 0.1814370336829586
+    },
+    "size_statistics": {
+      "median_width_px": 1720.0,
+      "median_height_px": 1635.3200000000002,
+      "mean_width_px": 1946.9416482564436,
+      "mean_height_px": 1734.9099718431883,
+      "min_width_px": 0.0,
+      "min_height_px": 0.0,
+      "max_width_px": 8704.0,
+      "max_height_px": 4560.0
+    },
+    "aspect_ratio_statistics": {
+      "median": 0.600762102135439,
+      "mean": 0.7611282190799159,
+      "std": 6.453302499606432,
+      "min": 0.0,
+      "max": 437.35499999999996,
+      "near_square_ratio": 0.2531947151830193
+    },
+    "object_size_categories": {
+      "tiny_objects_ratio": 0.008880225254494261,
+      "small_objects_ratio": 0.024907948884557073,
+      "medium_objects_ratio": 0.6382932640242581,
+      "large_objects_ratio": 0.33679878709118477
+    },
+    "position_analysis": {
+      "x_center_mean": 0.5271878667910471,
+      "x_center_std": 0.18242910996015066,
+      "y_center_mean": 0.6546161811775465,
+      "y_center_std": 0.11905094289013847,
+      "edge_proximity_ratio": 0.5609703270521984
+    },
+    "boxes_per_image_statistics": {
+      "median": 1.0,
+      "mean": 1.0584594222833563,
+      "std": 0.24515149223088115,
+      "min": 1,
+      "max": 3,
+      "multi_box_images_ratio": 0.055937643282897756
+    }
+  },
+  "class_distribution": {
+    "box_level": {
+      "counts": {
+        "0": 3147,
+        "1": 1470
+      },
+      "percentages": {
+        "0": 68.16114359974009,
+        "1": 31.838856400259907
+      },
+      "num_classes": 2
+    },
+    "image_level": {
+      "counts": {
+        "0": 3053,
+        "1": 1374
+      },
+      "percentages": {
+        "0": 68.96318048339734,
+        "1": 31.036819516602666
+      }
+    }
+  },
+  "training_recommendations": {
+    "object_regime": "Medium/Large object regime",
+    "suggested_imgsz": "640",
+    "suggested_model": "YOLOv8s (or YOLOv8n for speed)",
+    "exif_handling": "Can skip EXIF transpose (low incidence)",
+    "format_handling": "Format conversion optional",
+    "filter_strategy": "Classifier-first viable; still keep uncertain bucket.",
+    "augmentation_focus": [],
+    "training_tips": {
+      "use_mosaic_mixup": "False",
+      "use_balanced_sampling": false,
+      "use_high_resolution": false,
+      "use_heavy_augmentation": false,
+      "monitor_small_objects": "False"
+    }
+  },
+  "data_quality": {
+    "warnings": [],
+    "label_validity": {
+      "images_with_issues": 2,
+      "issue_types": {
+        "bad_class": 0,
+        "out_of_range": 0,
+        "non_positive_dimensions": 2
+      }
+    },
+    "duplicate_analysis": {
+      "exact_duplicate_groups": 0,
+      "total_duplicate_images": 0,
+      "duplicate_percentage": 0
+    },
+    "image_quality_issues": {
+      "dark_images_count": 2356,
+      "blurry_images_count": 2356,
+      "dark_images_percentage": 25.002653082882308,
+      "blurry_images_percentage": 25.002653082882308
+    }
+  },
+  "split_analysis": {
+    "available": true,
+    "splits": {
+      "train": {
+        "total_images": 9423,
+        "positive_images": 4362,
+        "background_images": 5061,
+        "positive_percentage": 46.290990130531675
+      },
+      "valid": {
+        "total_images": 1,
+        "positive_images": 0,
+        "background_images": 1,
+        "positive_percentage": 0.0
+      }
+    }
+  },
+  "performance_metrics": {
+    "processing_time_seconds": 1504.595496892929,
+    "processing_rate_images_per_second": 6.262812842028973,
+    "processing_rate_images_per_minute": 375.76877052173836,
+    "parallel_efficiency": {
+      "workers_used": 4,
+      "fast_mode_enabled": false,
+      "chunk_size_used": 50
+    }
+  },
+  "ml_characteristics": {
+    "dataset_complexity": {
+      "class_imbalance_ratio": 2.1408163265306124,
+      "annotation_density": 1.0584594222833563,
+      "object_density_per_image": 0.4899713467048711
+    },
+    "training_difficulty_indicators": {
+      "high_background_ratio": false,
+      "many_tiny_objects": "False",
+      "high_class_imbalance": false,
+      "low_annotation_density": true,
+      "resolution_variability": false
+    },
+    "recommended_preprocessing": {
+      "resize_images": true,
+      "normalize_coordinates": true,
+      "handle_exif": false,
+      "balance_dataset": false,
+      "augment_small_objects": "False"
+    }
+  }
+}

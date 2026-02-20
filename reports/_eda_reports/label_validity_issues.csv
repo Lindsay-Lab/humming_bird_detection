@@ -1,0 +1,3 @@
+stem,label_path,bad_class,out_range,non_pos_wh,bad_len
+05_WSCT0731_JPG.rf.5b5e4e7ea9fda54383fa14e797d0e422,H:\github-projects\humming_bird_detection\humming_bird_detection\data\raw\Label Birdfeeder Camera Observations.v3i.yolov11\train\labels\05_WSCT0731_JPG.rf.5b5e4e7ea9fda54383fa14e797d0e422.txt,0,0,1,0
+09_WSCT0016_JPG.rf.efc08639bc684c741c7b5ae6aee3ea3d,H:\github-projects\humming_bird_detection\humming_bird_detection\data\raw\Label Birdfeeder Camera Observations.v3i.yolov11\train\labels\09_WSCT0016_JPG.rf.efc08639bc684c741c7b5ae6aee3ea3d.txt,0,0,1,0
