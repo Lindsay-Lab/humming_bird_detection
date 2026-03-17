@@ -5,7 +5,9 @@ import torch
 import sys
 import argparse
 
-DATA_DIR = Path("data/processed/hb_detection/hb_ready")
+from humming_bird_detection.configs.paths import PROCESSED_DATA_DIR
+
+DATA_DIR = PROCESSED_DATA_DIR / "hb_detection" / "hb_ready"
 CHECKPOINTS_DIR = Path("checkpoints")
 CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -16,7 +18,7 @@ logger.add(sys.stdout, level="INFO", format="<green>{time:YYYY-MM-DD HH:mm:ss}</
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="yolov8n.pt", help="YOLO model to use (e.g., yolov8n.pt, yolov8s.pt)")
+    parser.add_argument("--model", type=str, default="yolo11n.pt", help="YOLO model to use (e.g., yolo11n.pt, yolo11s.pt)")
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size for training (default: 16)")
     parser.add_argument("--epochs", type=int, default=50, help="Number of epochs (default: 50)")
     parser.add_argument("--img-size", type=int, default=640, help="Image size (default: 640)")
