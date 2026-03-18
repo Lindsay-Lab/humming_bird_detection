@@ -18,12 +18,13 @@ def _console_sink():
         return lambda msg: print(msg, end="")
 
 def setup_logging(
-    logs_dir: Path, name: str, level: str = "INFO", 
-    also_console: bool = True,) -> Path | None:
+    logs_dir: Path, name: str, level: str = "INFO",
+    also_console: bool = True,) -> Path:
     """
-    Sets up Loguru logging for both console and optional file.
-    - If SLURM_JOB_ID exists, writes to a job-stamped file in logs_dir.
-    Returns the log file path if file logging enabled, else None.
+    Sets up Loguru logging for both console and file.
+    Always writes a timestamped log file to logs_dir.
+    If SLURM_JOB_ID exists, appends it to the filename.
+    Returns the log file path.
     """
     logger.remove()
 
@@ -32,12 +33,10 @@ def setup_logging(
             format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:>8}</level> | <cyan>{message}</cyan>",
             level=level, enqueue=True,)
 
+    logs_dir.mkdir(parents=True, exist_ok=True)
     slurm_job_id = os.getenv("SLURM_JOB_ID")
-    if slurm_job_id:
-        logs_dir.mkdir(parents=True, exist_ok=True)
-        log_file = logs_dir / f"{name}_{datetime.now():%Y%m%d_%H%M%S}_job{slurm_job_id}.log"
-        logger.add(log_file, level=level, enqueue=True)
-        logger.info(f"File logging enabled: {log_file.resolve()}")
-        return log_file
-
-    return None
+    suffix = f"_job{slurm_job_id}" if slurm_job_id else ""
+    log_file = logs_dir / f"{name}_{datetime.now():%Y%m%d_%H%M%S}{suffix}.log"
+    logger.add(log_file, level=level, enqueue=True)
+    logger.info(f"Log file: {log_file.resolve()}")
+    return log_file
