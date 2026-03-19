@@ -35,7 +35,7 @@ def setup_logging(
 
     logs_dir.mkdir(parents=True, exist_ok=True)
     slurm_job_id = os.getenv("SLURM_JOB_ID")
-    suffix = f"_job{slurm_job_id}" if slurm_job_id else ""
+    suffix = f"_job_{slurm_job_id}" if slurm_job_id else ""
     log_file = logs_dir / f"{name}_{datetime.now():%Y%m%d_%H%M%S}{suffix}.log"
     logger.add(log_file, level=level, enqueue=True)
     logger.info(f"Log file: {log_file.resolve()}")

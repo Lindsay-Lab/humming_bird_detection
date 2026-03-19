@@ -379,11 +379,7 @@ class YoloPreprocessor:
         # Background separation
         logger.info("=" * 60)
         logger.info(
-            "STEP 6/9: Separating backgrounds (pretrained YOLO26n-COCO detection)\n"
-            "  Why COCO? COCO is an object-detection dataset (80 classes incl. 'bird').\n"
-            "  ImageNet is classification-only — it can't locate objects in a scene.\n"
-            "  We need detection to answer 'is a bird present?' not 'is the whole image a bird?'"
-        )
+            "STEP 6/9: Separating backgrounds (pretrained YOLO26n-COCO detection)\n")
         positive_img = interim / "positive" / "images"
         positive_lbl = interim / "positive" / "labels"
         bg_img = bg_dir / "images"
@@ -497,7 +493,7 @@ def main():
                         help="Max long side for image downscaling")
     args = parser.parse_args()
 
-    setup_logging(LOGS_DIR, "preprocess", "DEBUG")
+    setup_logging(LOGS_DIR, "preprocess", "INFO")
 
     raw_dir = Path(args.raw_dir) if args.raw_dir else RAW_DATA_DIR
     out_dir = Path(args.out_dir) if args.out_dir else PROCESSED_DATA_DIR
