@@ -21,7 +21,8 @@ class PrepConfig:
     class_names: Tuple[str, ...] = ("hummingbird", "other_bird")
 
     # ── Image standardisation
-    max_long_side: int = 1920          # downscale so longest edge <= this
+    skip_resize: bool = False          # True = keep full resolution (YOLO resizes at train time)
+    max_long_side: int = 1920          # downscale so longest edge <= this (ignored if skip_resize)
     final_img_ext: str = ".jpg"
     jpeg_quality: int = 95
     interpolation: str = "LANCZOS"     # PIL resampling filter name

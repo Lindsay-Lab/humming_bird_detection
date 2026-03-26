@@ -43,6 +43,7 @@ from humming_bird_detection.configs.config import PrepConfig
 from humming_bird_detection.configs.paths import LOGS_DIR, PROCESSED_DATA_DIR, RAW_DATA_DIR
 from humming_bird_detection.preprocessing.build_yolo import remap_labels, resolve_hummingbird_ids
 from humming_bird_detection.preprocessing.crop_timestamp import crop_timestamp_dataset
+from humming_bird_detection.preprocessing.extract_timestamp_text import extract_all_timestamps
 from humming_bird_detection.preprocessing.separate_backgrounds import separate_backgrounds
 from humming_bird_detection.preprocessing.standardize import standardize_dataset
 from humming_bird_detection.preprocessing.validate import read_yolo_lines, sanitize_labels
@@ -206,14 +207,26 @@ def _write_metadata_csv(
     bg_counts: Dict,
     split_counts: Dict[str, int],
     cfg: PrepConfig,
+    ocr_data: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> Path:
     """Write image_metadata.csv mapping each image to its processing result.
 
-    Columns: filename, split, bg_separation_result, class_counts, timestamp_strip_path
+    Columns: filename, split, bg_separation_result, class_counts,
+             timestamp_strip_exists, timestamp_strip_path,
+             timestamp_text, timestamp_datetime, timestamp_temperature
     This lets you cross-reference: image → timestamp → detection result → class.
     """
     csv_path = base_dir / "image_metadata.csv"
     rows = []
+    ocr = ocr_data or {}
+
+    def _ocr_fields(img_name: str) -> Dict[str, str]:
+        meta = ocr.get(img_name, {})
+        return {
+            "timestamp_text": meta.get("raw_text", ""),
+            "timestamp_datetime": meta.get("datetime", ""),
+            "timestamp_temperature": meta.get("temperature", ""),
+        }
 
     # Final dataset images (positive, split into train/val/test)
     for split_name in ("train", "val", "test"):
@@ -237,14 +250,16 @@ def _write_metadata_csv(
                         except (ValueError, IndexError):
                             pass
             ts_strip = ts_strip_dir / img.name
-            rows.append({
+            row = {
                 "filename": img.name,
                 "split": split_name,
                 "bg_separation_result": "positive",
                 "class_counts": str(class_counts) if class_counts else "empty_label",
                 "timestamp_strip_exists": ts_strip.exists(),
                 "timestamp_strip_path": str(ts_strip) if ts_strip.exists() else "",
-            })
+            }
+            row.update(_ocr_fields(img.name))
+            rows.append(row)
 
     # Background images
     bg_img_dir = bg_dir / "images"
@@ -253,19 +268,22 @@ def _write_metadata_csv(
             if not img.is_file() or img.suffix.lower() not in IMG_EXTS:
                 continue
             ts_strip = ts_strip_dir / img.name
-            rows.append({
+            row = {
                 "filename": img.name,
                 "split": "background",
                 "bg_separation_result": "background",
                 "class_counts": "no_bird_detected",
                 "timestamp_strip_exists": ts_strip.exists(),
                 "timestamp_strip_path": str(ts_strip) if ts_strip.exists() else "",
-            })
+            }
+            row.update(_ocr_fields(img.name))
+            rows.append(row)
 
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=[
             "filename", "split", "bg_separation_result",
             "class_counts", "timestamp_strip_exists", "timestamp_strip_path",
+            "timestamp_text", "timestamp_datetime", "timestamp_temperature",
         ])
         writer.writeheader()
         writer.writerows(rows)
@@ -346,8 +364,13 @@ class YoloPreprocessor:
             logger.info(f"Timestamp strips saved to: {ts_strip_dir}")
             interim_img = cropped_img
             interim_lbl = cropped_lbl
+
+            # OCR extraction from timestamp strips (lightweight, CPU-only)
+            logger.info("Extracting text from timestamp strips (Tesseract OCR)...")
+            ocr_data = extract_all_timestamps(ts_strip_dir)
         else:
             logger.info("STEP 3/9: Timestamp cropping SKIPPED (crop_timestamp=False)")
+            ocr_data = {}
 
         # Sanitize labels
         logger.info("=" * 60)
@@ -356,7 +379,8 @@ class YoloPreprocessor:
 
         # Standardize images (parallel)
         logger.info("=" * 60)
-        logger.info("STEP 5/9: Standardizing images (RGB + long-side downscale + JPEG)")
+        resize_label = "full resolution (no resize)" if self.cfg.skip_resize else f"long-side downscale to {self.cfg.max_long_side}"
+        logger.info(f"STEP 5/9: Standardizing images (RGB + {resize_label} + JPEG)")
         std_img = standardized / "images"
         std_lbl = standardized / "labels"
         kept, skipped = standardize_dataset(
@@ -446,6 +470,7 @@ class YoloPreprocessor:
             bg_counts=bg_counts,
             split_counts=split_counts,
             cfg=self.cfg,
+            ocr_data=ocr_data,
         )
 
         visualize_preprocessed(final_root, viz_dir, self.cfg)
@@ -489,8 +514,10 @@ def main():
                         help="Number of parallel workers")
     parser.add_argument("--no-crop-timestamp", action="store_true",
                         help="Skip timestamp bar cropping")
+    parser.add_argument("--no-resize", action="store_true",
+                        help="Skip image resizing (keep full resolution; YOLO resizes at train time)")
     parser.add_argument("--max-long-side", type=int, default=None,
-                        help="Max long side for image downscaling")
+                        help="Max long side for image downscaling (ignored if --no-resize)")
     args = parser.parse_args()
 
     setup_logging(LOGS_DIR, "preprocess", "INFO")
@@ -506,6 +533,8 @@ def main():
         cfg.num_workers = args.workers
     if args.no_crop_timestamp:
         cfg.crop_timestamp = False
+    if args.no_resize:
+        cfg.skip_resize = True
     if args.max_long_side is not None:
         cfg.max_long_side = args.max_long_side
 

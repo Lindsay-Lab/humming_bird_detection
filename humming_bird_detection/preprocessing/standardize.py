@@ -81,7 +81,7 @@ def standardize_image(
 
             long_side = max(before_w, before_h)
             resized = False
-            if long_side > cfg.max_long_side:
+            if not cfg.skip_resize and long_side > cfg.max_long_side:
                 scale = cfg.max_long_side / long_side
                 new_w = int(round(before_w * scale))
                 new_h = int(round(before_h * scale))
@@ -141,9 +141,10 @@ def standardize_dataset(
         if p.is_file() and p.suffix.lower() in IMG_EXTS
     )
 
+    resize_msg = "DISABLED (full resolution)" if cfg.skip_resize else f"max_long_side={cfg.max_long_side}"
     logger.info(
         f"Standardizing {len(src_images)} images "
-        f"(max_long_side={cfg.max_long_side}, interpolation={cfg.interpolation}, "
+        f"(resize={resize_msg}, interpolation={cfg.interpolation}, "
         f"jpeg_quality={cfg.jpeg_quality}, workers={cfg.num_workers})"
     )
 
