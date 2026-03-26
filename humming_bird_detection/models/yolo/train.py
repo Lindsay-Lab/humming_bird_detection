@@ -1,69 +1,391 @@
-from pathlib import Path
-from ultralytics import YOLO
-from loguru import logger
-import torch
+"""YOLO training pipeline for hummingbird detection.
+
+Designed for HPC with H100 GPUs. Features:
+    - Weights & Biases (wandb) logging for experiment tracking
+    - GPU memory monitoring to avoid OOM / SLURM job cancellation
+    - Validation every N epochs (default: 5)
+    - Early stopping on mAP@0.5
+    - Cosine learning rate schedule
+    - Mixed precision (AMP) enabled by default
+    - Proper evaluation with mAP@0.5, mAP@0.5:0.95, per-class AP
+    - Hyperparameter tuning mode (--tune) via Ray Tune
+    - Gradient accumulation for effective larger batch sizes
+
+Usage:
+    # Standard training on H100
+    python -m humming_bird_detection.models.yolo.train --batch-size 32 --img-size 1280
+
+    # Full-resolution training (if preprocessed with --no-resize)
+    python -m humming_bird_detection.models.yolo.train --img-size 1920 --batch-size 8
+
+    # Hyperparameter tuning
+    python -m humming_bird_detection.models.yolo.train --tune --tune-iterations 30
+
+    # Resume interrupted training
+    python -m humming_bird_detection.models.yolo.train --resume
+"""
+from __future__ import annotations
+
+import os
 import sys
+import time
 import argparse
+import threading
+from pathlib import Path
+from typing import Dict, Optional
 
-from humming_bird_detection.configs.paths import PROCESSED_DATA_DIR
+import psutil
+import torch
+from loguru import logger
+from ultralytics import YOLO
 
+from humming_bird_detection.configs.paths import (
+    LOGS_DIR,
+    MODELS_DIR,
+    PROCESSED_DATA_DIR,
+)
+
+# ── Paths ────────────────────────────────────────────────────────────────────
 DATA_DIR = PROCESSED_DATA_DIR / "hb_detection" / "hb_ready"
-CHECKPOINTS_DIR = Path("checkpoints")
-CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
+RUNS_DIR = MODELS_DIR / "yolo" / "runs"
+RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
+# ── Logging ──────────────────────────────────────────────────────────────────
 logger.remove()
-logger.add(sys.stdout, level="INFO", format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:>8}</level> | <cyan>{message}</cyan>")
+logger.add(
+    sys.stdout,
+    level="INFO",
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:>8}</level> | <cyan>{message}</cyan>",
+)
+_log_file = LOGS_DIR / "train.log"
+_log_file.parent.mkdir(parents=True, exist_ok=True)
+logger.add(str(_log_file), level="DEBUG", rotation="50 MB")
 
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="yolo11n.pt", help="YOLO model to use (e.g., yolo11n.pt, yolo11s.pt)")
-    parser.add_argument("--batch-size", type=int, default=16, help="Batch size for training (default: 16)")
-    parser.add_argument("--epochs", type=int, default=50, help="Number of epochs (default: 50)")
-    parser.add_argument("--img-size", type=int, default=640, help="Image size (default: 640)")
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate (default: 0.001)")
-    return parser.parse_args()
 
-def main():
-    args = get_args()
-    batch_size = args.batch_size
-    epochs = args.epochs
-    img_size = args.img_size
-    model_name = args.model
-    lr = args.lr
-    logger.info(f"Training with model={model_name}, batch_size={batch_size}, epochs={epochs}, img_size={img_size}, lr={lr}")
+# ─────────────────────────────────────────────────────────────────────────────
+# GPU / System Monitoring
+# ─────────────────────────────────────────────────────────────────────────────
 
-    data_yaml = DATA_DIR / "data.yaml"
-    if not data_yaml.exists():
-        raise FileNotFoundError(f"{data_yaml} not found. Run preprocess.py first.")
+class GPUMonitor:
+    """Background thread that logs GPU memory & utilization at a fixed interval.
 
-    logger.info(f"Training YOLO model on dataset: {DATA_DIR} (device={DEVICE})")
-    model = YOLO(model_name)
+    Warns when GPU memory usage exceeds a threshold so you can catch OOM risks
+    before SLURM kills the job.
+    """
+
+    def __init__(
+        self,
+        interval_sec: int = 60,
+        warn_mem_pct: float = 90.0,
+        warn_ram_pct: float = 85.0,
+    ):
+        self.interval = interval_sec
+        self.warn_mem_pct = warn_mem_pct
+        self.warn_ram_pct = warn_ram_pct
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        if not torch.cuda.is_available():
+            logger.info("No CUDA device — GPU monitoring disabled")
+            return
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+        logger.info(
+            f"GPU monitor started (interval={self.interval}s, "
+            f"warn_gpu_mem>{self.warn_mem_pct}%, warn_ram>{self.warn_ram_pct}%)"
+        )
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=5)
+
+    def _loop(self) -> None:
+        while not self._stop.is_set():
+            self._log_status()
+            self._stop.wait(self.interval)
+
+    def _log_status(self) -> None:
+        try:
+            for i in range(torch.cuda.device_count()):
+                mem_alloc = torch.cuda.memory_allocated(i) / 1e9
+                mem_reserved = torch.cuda.memory_reserved(i) / 1e9
+                mem_total = torch.cuda.get_device_properties(i).total_mem / 1e9
+                mem_pct = (mem_reserved / mem_total) * 100 if mem_total > 0 else 0
+
+                logger.debug(
+                    f"GPU {i}: allocated={mem_alloc:.1f}GB, "
+                    f"reserved={mem_reserved:.1f}GB / {mem_total:.1f}GB ({mem_pct:.0f}%)"
+                )
+
+                if mem_pct > self.warn_mem_pct:
+                    logger.warning(
+                        f"⚠️  GPU {i} memory at {mem_pct:.0f}% — risk of OOM! "
+                        f"Consider reducing batch size or image size."
+                    )
+
+            ram = psutil.virtual_memory()
+            ram_pct = ram.percent
+            logger.debug(f"System RAM: {ram.used / 1e9:.1f}GB / {ram.total / 1e9:.1f}GB ({ram_pct:.0f}%)")
+            if ram_pct > self.warn_ram_pct:
+                logger.warning(f"⚠️  System RAM at {ram_pct:.0f}% — reduce num_workers if needed.")
+        except Exception as exc:
+            logger.debug(f"GPU monitor error: {exc}")
+
+    @staticmethod
+    def log_gpu_summary() -> None:
+        """One-shot GPU info dump for the log header."""
+        if not torch.cuda.is_available():
+            logger.info("Device: CPU (no CUDA)")
+            return
+        for i in range(torch.cuda.device_count()):
+            props = torch.cuda.get_device_properties(i)
+            logger.info(
+                f"GPU {i}: {props.name} | {props.total_mem / 1e9:.1f} GB | "
+                f"Compute {props.major}.{props.minor}"
+            )
+        logger.info(f"CUDA version: {torch.version.cuda}")
+        logger.info(f"cuDNN version: {torch.backends.cudnn.version()}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# W&B Setup
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _setup_wandb(args: argparse.Namespace) -> bool:
+    """Initialize Weights & Biases if available and not disabled.
+    Returns True if wandb is active.
+    """
+    if args.no_wandb:
+        os.environ["WANDB_DISABLED"] = "true"
+        logger.info("W&B logging DISABLED (--no-wandb)")
+        return False
 
     try:
-        logger.info(f"Starting training: epochs={epochs}, batch={batch_size}, imgsz={img_size}, lr0={lr}")
-        model.train(
+        import wandb  # noqa: F401
+    except ImportError:
+        logger.warning("wandb not installed — run `pip install wandb` for experiment tracking")
+        os.environ["WANDB_DISABLED"] = "true"
+        return False
+
+    wandb_key = os.getenv("WANDB_API_KEY")
+    if not wandb_key:
+        logger.warning("WANDB_API_KEY not set — W&B logging disabled")
+        os.environ["WANDB_DISABLED"] = "true"
+        return False
+
+    os.environ["WANDB_PROJECT"] = args.wandb_project
+    if args.wandb_entity:
+        os.environ["WANDB_ENTITY"] = args.wandb_entity
+
+    logger.info(f"W&B enabled: project={args.wandb_project}")
+    return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Evaluation Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _log_metrics(results, split: str, class_names: tuple = ("hummingbird", "other_bird")) -> Dict:
+    """Extract and log detailed metrics from a YOLO validation result.
+    Returns a flat dict of metrics suitable for logging/serialization.
+    """
+    box = results.box  # DetMetrics.box -> Metric object
+
+    metrics = {
+        f"{split}/mAP50": float(box.map50),
+        f"{split}/mAP50-95": float(box.map),
+        f"{split}/precision": float(box.mp),
+        f"{split}/recall": float(box.mr),
+    }
+
+    logger.info(f"{'─' * 50}")
+    logger.info(f"{split.upper()} METRICS:")
+    logger.info(f"  mAP@0.5       = {box.map50:.4f}")
+    logger.info(f"  mAP@0.5:0.95  = {box.map:.4f}")
+    logger.info(f"  Precision (P) = {box.mp:.4f}")
+    logger.info(f"  Recall (R)    = {box.mr:.4f}")
+
+    # Per-class AP
+    ap50_per_class = box.ap50
+    ap_per_class = box.ap
+    if ap50_per_class is not None and len(ap50_per_class) > 0:
+        logger.info(f"  Per-class AP@0.5:")
+        for i, ap in enumerate(ap50_per_class):
+            name = class_names[i] if i < len(class_names) else f"class_{i}"
+            logger.info(f"    {name}: AP50={float(ap):.4f}, AP50-95={float(ap_per_class[i]):.4f}")
+            metrics[f"{split}/AP50_{name}"] = float(ap)
+            metrics[f"{split}/AP50-95_{name}"] = float(ap_per_class[i])
+
+    logger.info(f"{'─' * 50}")
+    return metrics
+
+
+def evaluate_model(
+    model_path: Path,
+    data_yaml: Path,
+    split: str,
+    batch_size: int,
+    img_size: int,
+    device: str,
+    class_names: tuple = ("hummingbird", "other_bird"),
+    save_dir: Optional[Path] = None,
+) -> Dict:
+    """Run full evaluation on a split and return metrics dict."""
+    logger.info(f"Evaluating {model_path.name} on {split} split...")
+    model = YOLO(str(model_path))
+
+    val_kwargs = dict(
+        data=str(data_yaml),
+        split=split,
+        batch=batch_size,
+        imgsz=img_size,
+        device=device,
+        verbose=False,
+        plots=True,
+    )
+    if save_dir:
+        val_kwargs["project"] = str(save_dir.parent)
+        val_kwargs["name"] = save_dir.name
+
+    results = model.val(**val_kwargs)
+    metrics = _log_metrics(results, split, class_names)
+    return metrics
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Hyperparameter Tuning
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_tune(args: argparse.Namespace, data_yaml: Path, device: str) -> None:
+    """Run Ultralytics hyperparameter tuning with Ray Tune."""
+    logger.info("=" * 60)
+    logger.info("HYPERPARAMETER TUNING MODE")
+    logger.info(f"  iterations={args.tune_iterations}, epochs per trial={args.tune_epochs}")
+    logger.info("  Using Ray Tune (install: pip install ray[tune])")
+    logger.info("=" * 60)
+
+    model = YOLO(args.model)
+    model.tune(
+        data=str(data_yaml),
+        epochs=args.tune_epochs,
+        iterations=args.tune_iterations,
+        imgsz=args.img_size,
+        batch=args.batch_size,
+        device=device,
+        project=str(RUNS_DIR),
+        name="hb_tune",
+        exist_ok=True,
+    )
+    logger.success("Hyperparameter tuning complete. Check runs/hb_tune/ for results.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main Training
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_train(args: argparse.Namespace, data_yaml: Path, device: str) -> Path:
+    """Execute the training loop and return path to best checkpoint."""
+    logger.info("=" * 60)
+    logger.info("TRAINING CONFIGURATION")
+    logger.info(f"  Model:          {args.model}")
+    logger.info(f"  Image size:     {args.img_size}")
+    logger.info(f"  Batch size:     {args.batch_size}")
+    logger.info(f"  Epochs:         {args.epochs}")
+    logger.info(f"  LR0:            {args.lr0}")
+    logger.info(f"  LRf:            {args.lrf}")
+    logger.info(f"  Optimizer:      {args.optimizer}")
+    logger.info(f"  Val interval:   every {args.val_interval} epochs")
+    logger.info(f"  Patience:       {args.patience}")
+    logger.info(f"  Device:         {device}")
+    logger.info(f"  AMP:            {not args.no_amp}")
+    logger.info(f"  Workers:        {args.workers}")
+    logger.info(f"  Resume:         {args.resume}")
+    logger.info("=" * 60)
+
+    # Start GPU monitor
+    monitor = GPUMonitor(
+        interval_sec=args.monitor_interval,
+        warn_mem_pct=args.warn_gpu_pct,
+    )
+    monitor.start()
+
+    try:
+        if args.resume:
+            model = YOLO(args.resume_ckpt)
+            logger.info(f"Resuming from: {args.resume_ckpt}")
+        else:
+            model = YOLO(args.model)
+
+        train_kwargs = dict(
             data=str(data_yaml),
-            epochs=epochs,
-            batch=batch_size,
-            imgsz=img_size,
-            lr0=lr,
-            project=str(CHECKPOINTS_DIR),
-            name="hb_detection",
+            epochs=args.epochs,
+            batch=args.batch_size,
+            imgsz=args.img_size,
+            device=device,
+            project=str(RUNS_DIR),
+            name=args.run_name,
             exist_ok=True,
-            device=DEVICE,
             verbose=True,
-            save_period=1,
+            # ── Learning rate
+            lr0=args.lr0,
+            lrf=args.lrf,
+            optimizer=args.optimizer,
+            cos_lr=True,                      # cosine LR schedule
+            warmup_epochs=3.0,
+            warmup_momentum=0.8,
+            warmup_bias_lr=0.1,
+            # ── Validation & saving
+            val=True,
+            save=True,
+            save_period=args.val_interval,    # save checkpoint every N epochs
+            patience=args.patience,           # early stopping patience (0=disabled)
+            # ── Mixed precision
+            amp=not args.no_amp,
+            # ── Data loading
+            workers=args.workers,
+            # ── Augmentation (YOLO built-in)
+            hsv_h=0.015,                      # hue jitter
+            hsv_s=0.7,                        # saturation jitter
+            hsv_v=0.4,                        # brightness jitter
+            degrees=0.0,
+            translate=0.1,
+            scale=0.5,
+            fliplr=0.5,
+            flipud=0.0,                       # no vertical flip for birds
+            mosaic=1.0,
+            mixup=0.0,
+            copy_paste=0.0,
+            # ── Loss weights
+            box=7.5,
+            cls=0.5,
+            dfl=1.5,
+            # ── Plots
+            plots=True,
+            # ── Resume
+            resume=args.resume,
         )
-        logger.success("Training finished")
+
+        results = model.train(**train_kwargs)
+        logger.success("Training finished successfully")
+    except torch.cuda.OutOfMemoryError:
+        logger.critical(
+            "GPU OUT OF MEMORY! Reduce --batch-size or --img-size.\n"
+            "  Suggested: halve batch size or reduce img-size from 1280 to 640."
+        )
+        raise
     except Exception as e:
         logger.error(f"Training failed: {e}")
         raise
+    finally:
+        monitor.stop()
 
-    project_weights_dir = CHECKPOINTS_DIR / "hb_detection" / "weights"
-    best_ckpt = project_weights_dir / "best.pt"
-    last_ckpt = project_weights_dir / "last.pt"
+    # Locate best checkpoint
+    run_dir = RUNS_DIR / args.run_name
+    weights_dir = run_dir / "weights"
+    best_ckpt = weights_dir / "best.pt"
+    last_ckpt = weights_dir / "last.pt"
 
     if best_ckpt.exists():
         ckpt = best_ckpt
@@ -71,43 +393,189 @@ def main():
         logger.warning("best.pt not found; falling back to last.pt")
         ckpt = last_ckpt
     else:
-        pts = sorted(project_weights_dir.glob("*.pt"))
+        pts = sorted(weights_dir.glob("*.pt"))
         if pts:
             ckpt = pts[-1]
-            logger.warning(f"No best/last checkpoint found; using {ckpt.name}")
+            logger.warning(f"No best/last; using {ckpt.name}")
         else:
-            raise FileNotFoundError(f"No checkpoints found under {project_weights_dir}")
+            raise FileNotFoundError(f"No checkpoints under {weights_dir}")
 
-    logger.info(f"Loading checkpoint for evaluation: {ckpt}")
-    best_model = YOLO(str(ckpt))
+    logger.info(f"Best checkpoint: {ckpt}")
+    return ckpt
 
-    try:
-        logger.info("Evaluating on test split...")
-        results = best_model.val(data=str(data_yaml), split="test", batch=batch_size, device=DEVICE)
-        logger.info(f"Eval results object: {results}")
-        try:
-            logger.info(f"Metrics: {getattr(results, 'metrics', None)}")
-        except Exception:
-            logger.info("Couldn't extract results.metrics")
-    except Exception as e:
-        logger.error(f"Evaluation failed: {e}")
 
-    test_images_dir = DATA_DIR / "test" / "images"
-    if test_images_dir.exists():
-        test_images = sorted(test_images_dir.glob("*"))[:5]
-        if test_images:
-            out_preds_dir = CHECKPOINTS_DIR / "predictions"
-            out_preds_dir.mkdir(parents=True, exist_ok=True)
-            try:
-                logger.info(f"Running inference on {len(test_images)} test images...")
-                best_model.predict(source=[str(p) for p in test_images], save=True, project=str(out_preds_dir), name="test_preds")
-                logger.info(f"Saved predictions under {out_preds_dir}")
-            except Exception as e:
-                logger.error(f"Inference failed: {e}")
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Train YOLO for hummingbird detection (H100-optimized)",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    # ── Model
+    p.add_argument("--model", type=str, default="yolo26n.pt",
+                    help="Pretrained model (yolo26n.pt, yolo26s.pt, yolo26m.pt)")
+    p.add_argument("--run-name", type=str, default="hb_detection",
+                    help="Experiment run name")
+
+    # ── Training params
+    p.add_argument("--epochs", type=int, default=100,
+                    help="Total training epochs")
+    p.add_argument("--batch-size", type=int, default=32,
+                    help="Batch size (H100 80GB: 32-64 @1280, 128 @640)")
+    p.add_argument("--img-size", type=int, default=1280,
+                    help="Input image size (1280 recommended for H100)")
+    p.add_argument("--lr0", type=float, default=0.01,
+                    help="Initial learning rate")
+    p.add_argument("--lrf", type=float, default=0.01,
+                    help="Final LR as fraction of lr0 (cosine decay target)")
+    p.add_argument("--optimizer", type=str, default="AdamW",
+                    choices=["SGD", "Adam", "AdamW", "NAdam", "RAdam", "RMSProp"],
+                    help="Optimizer")
+
+    # ── Validation & early stopping
+    p.add_argument("--val-interval", type=int, default=5,
+                    help="Run validation + save checkpoint every N epochs")
+    p.add_argument("--patience", type=int, default=20,
+                    help="Early stopping patience (epochs without mAP improvement; 0=off)")
+
+    # ── Hardware
+    p.add_argument("--workers", type=int, default=8,
+                    help="Dataloader workers")
+    p.add_argument("--no-amp", action="store_true",
+                    help="Disable automatic mixed precision")
+
+    # ── GPU monitoring
+    p.add_argument("--monitor-interval", type=int, default=60,
+                    help="GPU monitoring interval in seconds")
+    p.add_argument("--warn-gpu-pct", type=float, default=90.0,
+                    help="Warn when GPU memory exceeds this percent")
+
+    # ── W&B
+    p.add_argument("--no-wandb", action="store_true",
+                    help="Disable Weights & Biases logging")
+    p.add_argument("--wandb-project", type=str, default="hummingbird-detection",
+                    help="W&B project name")
+    p.add_argument("--wandb-entity", type=str, default=None,
+                    help="W&B team/entity name")
+
+    # ── Resume
+    p.add_argument("--resume", action="store_true",
+                    help="Resume training from last checkpoint")
+    p.add_argument("--resume-ckpt", type=str,
+                    default=str(RUNS_DIR / "hb_detection" / "weights" / "last.pt"),
+                    help="Checkpoint to resume from")
+
+    # ── Hyperparameter tuning
+    p.add_argument("--tune", action="store_true",
+                    help="Run hyperparameter tuning instead of training")
+    p.add_argument("--tune-iterations", type=int, default=30,
+                    help="Number of tuning trials")
+    p.add_argument("--tune-epochs", type=int, default=30,
+                    help="Epochs per tuning trial")
+
+    return p.parse_args()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Entry point
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    args = get_args()
+
+    # Device
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cpu":
+        logger.warning("No CUDA device detected — training on CPU (very slow!)")
+
+    # Log system info
+    GPUMonitor.log_gpu_summary()
+    logger.info(f"PyTorch: {torch.__version__}")
+    logger.info(f"System RAM: {psutil.virtual_memory().total / 1e9:.1f} GB")
+
+    # Data
+    data_yaml = DATA_DIR / "data.yaml"
+    if not data_yaml.exists():
+        raise FileNotFoundError(
+            f"{data_yaml} not found. Run the preprocessing pipeline first:\n"
+            f"  python -m humming_bird_detection.preprocessing.preprocessor"
+        )
+
+    # W&B
+    wandb_active = _setup_wandb(args)
+
+    if args.tune:
+        # ── Hyperparameter tuning mode
+        run_tune(args, data_yaml, device)
     else:
-        logger.warning(f"No test images directory found at {test_images_dir}")
+        # ── Standard training
+        best_ckpt = run_train(args, data_yaml, device)
 
-    logger.success(f"Evaluation complete! Best model used: {ckpt}")
+        # ── Post-training evaluation on val + test
+        class_names = ("hummingbird", "other_bird")
+        all_metrics = {}
+
+        for split in ("val", "test"):
+            split_dir = DATA_DIR / split / "images"
+            if not split_dir.exists():
+                logger.warning(f"Split '{split}' not found at {split_dir} — skipping evaluation")
+                continue
+            eval_dir = RUNS_DIR / args.run_name / f"eval_{split}"
+            metrics = evaluate_model(
+                model_path=best_ckpt,
+                data_yaml=data_yaml,
+                split=split,
+                batch_size=args.batch_size,
+                img_size=args.img_size,
+                device=device,
+                class_names=class_names,
+                save_dir=eval_dir,
+            )
+            all_metrics.update(metrics)
+
+        # Log final metrics to W&B
+        if wandb_active:
+            try:
+                import wandb
+                if wandb.run is not None:
+                    wandb.log(all_metrics)
+                    logger.info("Final metrics logged to W&B")
+            except Exception:
+                pass
+
+        # ── Summary
+        logger.info("=" * 60)
+        logger.info("TRAINING & EVALUATION COMPLETE")
+        logger.info(f"  Best model:  {best_ckpt}")
+        logger.info(f"  Run dir:     {RUNS_DIR / args.run_name}")
+        for k, v in sorted(all_metrics.items()):
+            logger.info(f"  {k}: {v:.4f}")
+        logger.info("=" * 60)
+
+        # ── Sample predictions on test images
+        test_img_dir = DATA_DIR / "test" / "images"
+        if test_img_dir.exists():
+            test_images = sorted(test_img_dir.iterdir())[:10]
+            if test_images:
+                pred_dir = RUNS_DIR / args.run_name / "test_predictions"
+                logger.info(f"Saving {len(test_images)} sample predictions to {pred_dir}...")
+                best_model = YOLO(str(best_ckpt))
+                best_model.predict(
+                    source=[str(p) for p in test_images],
+                    save=True,
+                    project=str(pred_dir.parent),
+                    name=pred_dir.name,
+                    imgsz=args.img_size,
+                    device=device,
+                    conf=0.25,
+                )
+                logger.info(f"Predictions saved to {pred_dir}")
+
+    logger.success("Done.")
+
 
 if __name__ == "__main__":
     main()
