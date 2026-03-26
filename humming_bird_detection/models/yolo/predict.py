@@ -37,28 +37,12 @@ from humming_bird_detection.configs.paths import (
     MODELS_DIR,
     PROCESSED_DATA_DIR,
 )
+from humming_bird_detection.utils.logging import setup_logging
 
-# ── Paths ────────────────────────────────────────────────────────────────────
 RUNS_DIR = MODELS_DIR / "yolo" / "runs"
 METADATA_CSV = PROCESSED_DATA_DIR / "hb_detection" / "image_metadata.csv"
 
-# ── Logging ──────────────────────────────────────────────────────────────────
-logger.remove()
-logger.add(
-    sys.stdout,
-    level="INFO",
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:>8}</level> | <cyan>{message}</cyan>",
-)
-_log_file = LOGS_DIR / "predict.log"
-_log_file.parent.mkdir(parents=True, exist_ok=True)
-logger.add(str(_log_file), level="DEBUG", rotation="50 MB")
-
 CLASS_NAMES: Tuple[str, ...] = ("hummingbird", "other_bird")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Metadata enrichment
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _load_metadata(csv_path: Path) -> Dict[str, Dict[str, str]]:
     """Load image_metadata.csv into a dict keyed by filename."""
@@ -72,11 +56,6 @@ def _load_metadata(csv_path: Path) -> Dict[str, Dict[str, str]]:
             metadata[row["filename"]] = dict(row)
     logger.info(f"Loaded metadata for {len(metadata)} images from {csv_path}")
     return metadata
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI
-# ─────────────────────────────────────────────────────────────────────────────
 
 def get_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -107,13 +86,11 @@ def get_args() -> argparse.Namespace:
 
     return p.parse_args()
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Entry point
-# ─────────────────────────────────────────────────────────────────────────────
-
 def main():
     args = get_args()
+
+    # ── Logging (unique file per run) ──
+    setup_logging(LOGS_DIR, name="predict")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device: {device}")

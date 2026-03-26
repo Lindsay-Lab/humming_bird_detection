@@ -48,34 +48,14 @@ from humming_bird_detection.configs.paths import (
     MODELS_DIR,
     PROCESSED_DATA_DIR,
 )
+from humming_bird_detection.utils.logging import setup_logging
 
-# ── Paths ────────────────────────────────────────────────────────────────────
 DATA_DIR = PROCESSED_DATA_DIR / "hb_detection" / "hb_ready"
 RUNS_DIR = MODELS_DIR / "yolo" / "runs"
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
-# ── Logging ──────────────────────────────────────────────────────────────────
-logger.remove()
-logger.add(
-    sys.stdout,
-    level="INFO",
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:>8}</level> | <cyan>{message}</cyan>",
-)
-_log_file = LOGS_DIR / "train.log"
-_log_file.parent.mkdir(parents=True, exist_ok=True)
-logger.add(str(_log_file), level="DEBUG", rotation="50 MB")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# GPU / System Monitoring
-# ─────────────────────────────────────────────────────────────────────────────
-
 class GPUMonitor:
-    """Background thread that logs GPU memory & utilization at a fixed interval.
-
-    Warns when GPU memory usage exceeds a threshold so you can catch OOM risks
-    before SLURM kills the job.
-    """
+    #Background thread that logs GPU memory & utilization at a fixed interval.
 
     def __init__(
         self,
@@ -152,11 +132,6 @@ class GPUMonitor:
         logger.info(f"CUDA version: {torch.version.cuda}")
         logger.info(f"cuDNN version: {torch.backends.cudnn.version()}")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# W&B Setup
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _setup_wandb(args: argparse.Namespace) -> bool:
     """Initialize Weights & Biases if available and not disabled.
     Returns True if wandb is active.
@@ -185,11 +160,6 @@ def _setup_wandb(args: argparse.Namespace) -> bool:
 
     logger.info(f"W&B enabled: project={args.wandb_project}")
     return True
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Dry-Run Subset Dataset
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _create_dry_run_dataset(data_yaml: Path, num_samples: int) -> Path:
     """Create a tiny subset dataset for smoke-testing the full pipeline.
@@ -239,11 +209,6 @@ def _create_dry_run_dataset(data_yaml: Path, num_samples: int) -> Path:
     logger.info(f"Dry-run dataset created at {dry_dir}")
     return dry_yaml
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Evaluation Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _log_metrics(results, split: str, class_names: tuple = ("hummingbird", "other_bird")) -> Dict:
     """Extract and log detailed metrics from a YOLO validation result.
     Returns a flat dict of metrics suitable for logging/serialization.
@@ -278,7 +243,6 @@ def _log_metrics(results, split: str, class_names: tuple = ("hummingbird", "othe
     logger.info(f"{'─' * 50}")
     return metrics
 
-
 def evaluate_model(
     model_path: Path,
     data_yaml: Path,
@@ -310,11 +274,6 @@ def evaluate_model(
     metrics = _log_metrics(results, split, class_names)
     return metrics
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Hyperparameter Tuning
-# ─────────────────────────────────────────────────────────────────────────────
-
 def run_tune(args: argparse.Namespace, data_yaml: Path, device: str) -> None:
     """Run Ultralytics hyperparameter tuning with Ray Tune."""
     logger.info("=" * 60)
@@ -336,11 +295,6 @@ def run_tune(args: argparse.Namespace, data_yaml: Path, device: str) -> None:
         exist_ok=True,
     )
     logger.success("Hyperparameter tuning complete. Check runs/hb_tune/ for results.")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Main Training
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run_train(args: argparse.Namespace, data_yaml: Path, device: str) -> Path:
     """Execute the training loop and return path to best checkpoint."""
@@ -460,11 +414,6 @@ def run_train(args: argparse.Namespace, data_yaml: Path, device: str) -> Path:
     logger.info(f"Best checkpoint: {ckpt}")
     return ckpt
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI
-# ─────────────────────────────────────────────────────────────────────────────
-
 def get_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Train YOLO for hummingbird detection (H100-optimized)",
@@ -541,13 +490,11 @@ def get_args() -> argparse.Namespace:
 
     return p.parse_args()
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Entry point
-# ─────────────────────────────────────────────────────────────────────────────
-
 def main():
     args = get_args()
+
+    # ── Logging (unique file per run) ──
+    setup_logging(LOGS_DIR, name="train")
 
     # Device
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -649,7 +596,6 @@ def main():
                 logger.info(f"Predictions saved to {pred_dir}")
 
     logger.success("Done.")
-
 
 if __name__ == "__main__":
     main()

@@ -38,28 +38,13 @@ from humming_bird_detection.configs.paths import (
     MODELS_DIR,
     PROCESSED_DATA_DIR,
 )
+from humming_bird_detection.utils.logging import setup_logging
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 DATA_DIR = PROCESSED_DATA_DIR / "hb_detection" / "hb_ready"
 RUNS_DIR = MODELS_DIR / "yolo" / "runs"
 
-# ── Logging ──────────────────────────────────────────────────────────────────
-logger.remove()
-logger.add(
-    sys.stdout,
-    level="INFO",
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:>8}</level> | <cyan>{message}</cyan>",
-)
-_log_file = LOGS_DIR / "eval.log"
-_log_file.parent.mkdir(parents=True, exist_ok=True)
-logger.add(str(_log_file), level="DEBUG", rotation="50 MB")
-
 CLASS_NAMES: Tuple[str, ...] = ("hummingbird", "other_bird")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Metric extraction
-# ─────────────────────────────────────────────────────────────────────────────
 
 def extract_metrics(results, split: str) -> Dict[str, float]:
     """Extract a flat metrics dict from YOLO validation results."""
@@ -95,11 +80,6 @@ def print_metrics_table(metrics: Dict[str, float]) -> None:
         logger.info(f"  {key:40s} = {metrics[key]:.4f}")
 
     logger.info("=" * 60)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Per-image inference results
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run_per_image_eval(
     model: YOLO,
@@ -179,11 +159,6 @@ def run_per_image_eval(
     logger.info(f"Per-image results saved to {output_csv} ({len(rows)} images)")
     return len(rows)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI
-# ─────────────────────────────────────────────────────────────────────────────
-
 def get_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Evaluate a trained YOLO hummingbird detection model",
@@ -218,13 +193,11 @@ def get_args() -> argparse.Namespace:
 
     return p.parse_args()
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Entry point
-# ─────────────────────────────────────────────────────────────────────────────
-
 def main():
     args = get_args()
+
+    # ── Logging (unique file per run) ──
+    setup_logging(LOGS_DIR, name="eval")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device: {device}")
