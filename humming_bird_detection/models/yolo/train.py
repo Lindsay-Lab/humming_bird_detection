@@ -23,10 +23,14 @@ Usage:
 
     # Resume interrupted training
     python -m humming_bird_detection.models.yolo.train --resume
+
+    # Dry-run smoke test (10 images, 2 epochs)
+    python -m humming_bird_detection.models.yolo.train --dry-run
 """
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import time
 import argparse
@@ -111,7 +115,7 @@ class GPUMonitor:
             for i in range(torch.cuda.device_count()):
                 mem_alloc = torch.cuda.memory_allocated(i) / 1e9
                 mem_reserved = torch.cuda.memory_reserved(i) / 1e9
-                mem_total = torch.cuda.get_device_properties(i).total_mem / 1e9
+                mem_total = torch.cuda.get_device_properties(i).total_memory / 1e9
                 mem_pct = (mem_reserved / mem_total) * 100 if mem_total > 0 else 0
 
                 logger.debug(
@@ -142,7 +146,7 @@ class GPUMonitor:
         for i in range(torch.cuda.device_count()):
             props = torch.cuda.get_device_properties(i)
             logger.info(
-                f"GPU {i}: {props.name} | {props.total_mem / 1e9:.1f} GB | "
+                f"GPU {i}: {props.name} | {props.total_memory / 1e9:.1f} GB | "
                 f"Compute {props.major}.{props.minor}"
             )
         logger.info(f"CUDA version: {torch.version.cuda}")
@@ -181,6 +185,59 @@ def _setup_wandb(args: argparse.Namespace) -> bool:
 
     logger.info(f"W&B enabled: project={args.wandb_project}")
     return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dry-Run Subset Dataset
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _create_dry_run_dataset(data_yaml: Path, num_samples: int) -> Path:
+    """Create a tiny subset dataset for smoke-testing the full pipeline.
+
+    Copies up to `num_samples` images (+labels) from each split into a
+    temporary directory and writes a new data.yaml pointing to it.
+    Returns the path to the new data.yaml.
+    """
+    import yaml
+
+    with open(data_yaml, "r") as f:
+        cfg = yaml.safe_load(f)
+
+    dry_dir = DATA_DIR.parent / "hb_ready_dryrun"
+    if dry_dir.exists():
+        shutil.rmtree(dry_dir)
+
+    for split in ("train", "val", "test"):
+        src_img = DATA_DIR / split / "images"
+        src_lbl = DATA_DIR / split / "labels"
+        if not src_img.exists():
+            continue
+
+        dst_img = dry_dir / split / "images"
+        dst_lbl = dry_dir / split / "labels"
+        dst_img.mkdir(parents=True, exist_ok=True)
+        dst_lbl.mkdir(parents=True, exist_ok=True)
+
+        images = sorted(src_img.iterdir())[:num_samples]
+        for img in images:
+            shutil.copy2(img, dst_img / img.name)
+            lbl = src_lbl / img.with_suffix(".txt").name
+            if lbl.exists():
+                shutil.copy2(lbl, dst_lbl / lbl.name)
+
+        logger.info(f"  dry-run {split}: {len(images)} images copied")
+
+    # Write new data.yaml
+    dry_yaml = dry_dir / "data.yaml"
+    cfg["path"] = str(dry_dir)
+    cfg["train"] = "train/images"
+    cfg["val"] = "val/images"
+    cfg["test"] = "test/images"
+    with open(dry_yaml, "w") as f:
+        yaml.dump(cfg, f, default_flow_style=False)
+
+    logger.info(f"Dry-run dataset created at {dry_dir}")
+    return dry_yaml
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -468,6 +525,12 @@ def get_args() -> argparse.Namespace:
                     default=str(RUNS_DIR / "hb_detection" / "weights" / "last.pt"),
                     help="Checkpoint to resume from")
 
+    # ── Dry-run (smoke test)
+    p.add_argument("--dry-run", action="store_true",
+                    help="Quick sanity check: train on ~10 images for 2 epochs, then evaluate")
+    p.add_argument("--dry-run-samples", type=int, default=10,
+                    help="Number of images to use in dry-run mode")
+
     # ── Hyperparameter tuning
     p.add_argument("--tune", action="store_true",
                     help="Run hyperparameter tuning instead of training")
@@ -506,6 +569,17 @@ def main():
 
     # W&B
     wandb_active = _setup_wandb(args)
+
+    # ── Dry-run: create a tiny subset dataset for smoke testing
+    if args.dry_run:
+        data_yaml = _create_dry_run_dataset(data_yaml, args.dry_run_samples)
+        args.epochs = min(args.epochs, 2)
+        args.patience = 0  # disable early stopping
+        args.run_name = args.run_name + "_dryrun"
+        logger.info(
+            f"DRY-RUN MODE: {args.dry_run_samples} images, "
+            f"{args.epochs} epochs, no early stopping"
+        )
 
     if args.tune:
         # ── Hyperparameter tuning mode
