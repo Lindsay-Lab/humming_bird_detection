@@ -1,0 +1,70 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "humming_bird_detection"
+version = "0.0.1"
+description = "Classifying bird observations from wildlife cameras."
+authors = [{ name = "rgutzen" }]
+license = { file = "LICENSE" }
+readme = "README.md"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+]
+requires-python = "~=3.12"
+
+dependencies = [
+  "ruamel.yaml >=0.18.3",
+  "python-dotenv >=1.0.1",
+  "scipy >=1.9",
+  "numpy >=1.26.4",
+  "snakemake >=8.10.0",
+  "snakemake-executor-plugin-cluster-generic >=1.0.0",
+  "pandas >=1.2.0",
+  "scikit-learn >=1.1.0",
+  "scikit-image >=0.20.0",
+  "torch >=2.2.0",
+  "torchvision >=0.16.0",
+  "torchsummary >=1.5.0",
+  "opencv-python >=4.9.0",
+  "matplotlib >=3.5.1",
+  "seaborn >=0.13.0",
+  "jupyterlab >=4.0.0",
+  "ipympl >=0.7.0",
+  "tqdm >=4.66.0",
+  "wandb",
+  "pytorch-lightning",
+  "tensorboard",
+  "cupy >= 13.3.0",
+  "numba >= 0.60.0",
+  "ultralytics",
+  "easyocr",
+  "click >=8.0",
+  "sahi",
+  # install via conda/mamba:
+  # "cudatoolkit >= 11.3", 
+  # "libjpeg-turbo >= 3.0.0",
+  # "opencv-python >= 4.10.0",
+  # "pkg-config >= 0.29.2",
+  # "ffcv >= 1.0.2",
+]
+
+[project.scripts]
+hbd = "humming_bird_detection.cli:cli"
+
+[tool.pytest.ini_options]
+markers = [
+  "integration: tests that require real data files in data/raw/ and run the full pipeline (deselect with -m 'not integration')",
+]
+
+[tool.black]
+line-length = 87
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+)/
+'''
