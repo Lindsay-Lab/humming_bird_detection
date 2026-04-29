@@ -1,0 +1,38 @@
+# Runtime configuration for the hummingbird detection pipeline.
+# Values marked TUNABLE are the first candidates for adjustment.
+
+image:
+  margin_px: 272           # height of camera metadata strip at bottom
+  input_extension: ".jpg"
+
+detector:
+  model: "yolo11n.pt"      # TUNABLE: yolo11s.pt / yolo11m.pt for more accuracy
+  model_dir: "models/YOLO"
+  bird_class_id: 14        # COCO class index for "bird"
+  confidence_threshold: 0.3  # TUNABLE
+  slice_size: 1280         # TUNABLE: tile size in px for SAHI tiling; null to disable
+  overlap_ratio: 0.2       # TUNABLE: fractional overlap between adjacent tiles
+  nms_iou_threshold: 0.5   # TUNABLE: IoU threshold for SAHI post-NMS merge; lower values
+                           # keep more boxes (safer when two birds are close together)
+
+classifier:
+  model: "hummingbird_classifier.pt"
+  model_dir: "models"
+  image_size: 224
+  hummingbird_label: 1
+  confidence_threshold: 0.5  # TUNABLE
+
+training:
+  base_model: "efficientnet_v2_s"  # TUNABLE: efficientnet_v2_m, resnet50
+  epochs: 30                        # TUNABLE
+  batch_size: 32                    # TUNABLE
+  learning_rate: 0.0003             # TUNABLE
+  weight_decay: 0.0001
+  val_split: 0.2
+  early_stopping_patience: 5
+
+deduplication:
+  window_seconds: 18       # records <= this many seconds apart are duplicates
+
+preprocessing:
+  pad_fraction: 0.10       # add 10 % padding around YOLO bbox
