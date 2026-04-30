@@ -53,6 +53,23 @@ class BirdDetector:
         # Direct YOLO model — always initialised so unit tests can mock it.
         self._model = YOLO(self._model_path)
 
+        # Validate that bird_class_id is present in the model's known classes.
+        model_names: dict = self._model.names  # {int: str}
+        if self.bird_class_id not in model_names:
+            raise ValueError(
+                f"bird_class_id={self.bird_class_id} is not a valid class index for "
+                f"the loaded model (valid indices: 0–{max(model_names)}). "
+                "For COCO-trained YOLO models the bird class is 14. "
+                "Set bird_class_id explicitly if using a custom-trained model."
+            )
+        if model_names[self.bird_class_id].lower() != "bird":
+            logger.warning(
+                "bird_class_id=%d maps to class '%s' (expected 'bird'). "
+                "Verify that bird_class_id matches the model's class indexing.",
+                self.bird_class_id,
+                model_names[self.bird_class_id],
+            )
+
         # SAHI wrapper — initialised lazily on first tiled call so that tests
         # using slice_size=None never touch the SAHI stack.
         self._sahi_model = None
@@ -75,8 +92,13 @@ class BirdDetector:
         """Single-pass YOLO inference on the full (or pre-cropped) image."""
         try:
             results = self._model(image, verbose=False)
-        except Exception:
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                raise
             logger.exception("YOLO inference failed")
+            return []
+        except Exception:
+            logger.exception("YOLO inference failed (unexpected error)")
             return []
 
         detections: list[Detection] = []
@@ -121,8 +143,13 @@ class BirdDetector:
                 postprocess_match_threshold=self.nms_iou_threshold,
                 verbose=0,
             )
-        except Exception:
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                raise
             logger.exception("SAHI tiled inference failed")
+            return []
+        except Exception:
+            logger.exception("SAHI tiled inference failed (unexpected error)")
             return []
 
         detections: list[Detection] = []

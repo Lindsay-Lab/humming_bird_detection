@@ -16,11 +16,19 @@ from humming_bird_detection.project_paths import project_paths as _project_paths
 
 logger = logging.getLogger(__name__)
 
+# ImageNet channel-wise mean and std used to normalise EfficientNetV2-S inputs.
+# These values match the statistics of the ImageNet-1K training set and must be
+# consistent with the EfficientNet_V2_S_Weights.IMAGENET1K_V1 pretrained weights
+# loaded below.  Changing them would shift the input distribution away from what
+# the pretrained filters expect.
+_IMAGENET_MEAN = [0.485, 0.456, 0.406]
+_IMAGENET_STD = [0.229, 0.224, 0.225]
+
 _VAL_TRANSFORMS = transforms.Compose(
     [
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=_IMAGENET_MEAN, std=_IMAGENET_STD),
     ]
 )
 
@@ -33,7 +41,9 @@ def _build_model() -> nn.Module:
     in_features = backbone.classifier[1].in_features
     backbone.classifier = nn.Sequential(
         nn.Dropout(p=0.3),
-        nn.Linear(in_features, 1),
+        nn.Linear(in_features, 1),  # single logit + BCEWithLogitsLoss: numerically
+        # stabler than 2-class softmax and natural for binary tasks with class
+        # imbalance (pos_weight can be set per-sample without extra arguments).
     )
     return backbone
 
@@ -96,6 +106,8 @@ class HummingbirdClassifier:
         output_path: str | Path | None = None,
         weight_decay: float = 1e-4,
         early_stopping_patience: int = 5,
+        wandb_run=None,
+        num_workers: int = 0,
     ) -> dict:
         """Fine-tune the classifier on labelled crops.
 
@@ -107,6 +119,13 @@ class HummingbirdClassifier:
           is updated at the full learning rate.
         - Phase 2 (remaining epochs): all parameters unfrozen, LR reduced to
           ``lr / 10``, ``CosineAnnealingLR`` applied for smooth decay.
+
+        If ``epochs`` ≤ 5 the backbone remains frozen for the entire run
+        (Phase 2 never executes); a warning is logged in this case.
+
+        ``num_workers`` is passed to both DataLoaders.  The default (0) ensures
+        reproducible sample ordering by avoiding multiprocessing non-determinism;
+        increase on multi-core machines for faster data loading.
 
         Early stopping monitors validation loss; the best checkpoint is saved
         at ``output_path`` (defaults to
@@ -126,14 +145,16 @@ class HummingbirdClassifier:
         _TRAIN_TRANSFORMS = transforms.Compose(
             [
                 transforms.RandomHorizontalFlip(),
-                transforms.RandomVerticalFlip(),
                 transforms.RandomRotation(15),
+                transforms.RandomAffine(
+                    degrees=0,
+                    translate=(0.1, 0.1),  # shift up to 10% of image dims
+                    scale=(0.9, 1.1),  # zoom ±15%
+                ),
                 transforms.ColorJitter(brightness=0.4, contrast=0.3, saturation=0.2),
                 transforms.Resize((224, 224)),
                 transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
+                transforms.Normalize(mean=_IMAGENET_MEAN, std=_IMAGENET_STD),
             ]
         )
 
@@ -173,19 +194,29 @@ class HummingbirdClassifier:
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
-            num_workers=0,
+            num_workers=num_workers,
             pin_memory=False,
         )
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
             shuffle=False,
-            num_workers=0,
+            num_workers=num_workers,
             pin_memory=False,
         )
 
         criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         head_freeze_epochs = min(5, epochs)
+
+        if epochs <= head_freeze_epochs:
+            logger.warning(
+                "epochs=%d ≤ head_freeze_epochs=%d: the backbone will remain frozen "
+                "for the entire training run and Phase 2 (full fine-tuning) will "
+                "never execute. Set epochs > %d to enable backbone fine-tuning.",
+                epochs,
+                head_freeze_epochs,
+                head_freeze_epochs,
+            )
 
         # --- Phase 1: head-only ---
         for param in self._model.features.parameters():
@@ -224,6 +255,7 @@ class HummingbirdClassifier:
             # --- train ---
             self._model.train()
             train_loss = 0.0
+            train_correct = 0
             for images, folder_labels in train_loader:
                 images = images.to(self.device)
                 targets = folder_labels.eq(hb_idx).float().to(self.device)
@@ -233,31 +265,83 @@ class HummingbirdClassifier:
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item() * len(images)
+                train_correct += (
+                    (torch.sigmoid(logits) >= 0.5).eq(targets.bool()).sum().item()
+                )
             train_loss /= len(train_dataset)
+            train_acc = train_correct / len(train_dataset)
 
             if epoch > head_freeze_epochs:
                 scheduler.step()  # type: ignore[possibly-undefined]
+            current_lr = optimizer.param_groups[0]["lr"]
 
             # --- validate ---
             self._model.eval()
             val_loss = 0.0
+            val_preds: list[float] = []
+            val_tgts: list[float] = []
             with torch.no_grad():
                 for images, folder_labels in val_loader:
                     images = images.to(self.device)
                     targets = folder_labels.eq(hb_idx).float().to(self.device)
                     logits = self._model(images).squeeze(1)
                     val_loss += criterion(logits, targets).item() * len(images)
+                    preds = (torch.sigmoid(logits) >= 0.5).float()
+                    val_preds.extend(preds.cpu().tolist())
+                    val_tgts.extend(targets.cpu().tolist())
             val_loss /= len(val_dataset)
 
-            logger.info(
-                "Epoch %d/%d  train_loss=%.4f  val_loss=%.4f",
-                epoch,
-                epochs,
-                train_loss,
-                val_loss,
+            # per-epoch classification metrics
+            vp = torch.tensor(val_preds)
+            vt = torch.tensor(val_tgts)
+            val_acc = vp.eq(vt).float().mean().item()
+            tp = int(((vp == 1) & (vt == 1)).sum())
+            fp = int(((vp == 1) & (vt == 0)).sum())
+            fn = int(((vp == 0) & (vt == 1)).sum())
+            val_prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            val_rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            val_f1 = (
+                2 * val_prec * val_rec / (val_prec + val_rec)
+                if (val_prec + val_rec) > 0
+                else 0.0
             )
 
-            if val_loss < best_val_loss:
+            is_best = val_loss < best_val_loss
+
+            logger.info(
+                "Epoch %d/%d  lr=%.2e  train_loss=%.4f  train_acc=%.3f"
+                "  val_loss=%.4f  val_acc=%.3f  val_prec=%.3f"
+                "  val_rec=%.3f  val_f1=%.3f%s",
+                epoch,
+                epochs,
+                current_lr,
+                train_loss,
+                train_acc,
+                val_loss,
+                val_acc,
+                val_prec,
+                val_rec,
+                val_f1,
+                "  ← best" if is_best else "",
+            )
+
+            if wandb_run is not None:
+                wandb_run.log(
+                    {
+                        "train/loss": train_loss,
+                        "train/accuracy": train_acc,
+                        "train/lr": current_lr,
+                        "val/loss": val_loss,
+                        "val/accuracy": val_acc,
+                        "val/precision": val_prec,
+                        "val/recall": val_rec,
+                        "val/f1": val_f1,
+                        "val/is_best": is_best,
+                    },
+                    step=epoch,
+                )
+
+            if is_best:
                 best_val_loss = val_loss
                 best_epoch = epoch
                 patience_counter = 0

@@ -27,6 +27,9 @@ def crop_and_resize(
     cy2 = min(h, y2 + py)
 
     crop = image[cy1:cy2, cx1:cx2]
+    # INTER_AREA averages pixels in the source region mapped to each output pixel,
+    # which produces less aliasing than INTER_LINEAR when downscaling — the most
+    # common case here since detections are usually larger than 224 px.
     resized = cv2.resize(
         crop, (output_size, output_size), interpolation=cv2.INTER_AREA
     )

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import logging
 
 import cv2
 import numpy as np
@@ -207,3 +210,41 @@ def test_process_directory_multiple_birds_per_image(
     assert len(df) == 4
     assert list(df["bird_index"]) == [0, 1, 0, 1]
     assert all(df["n_birds"] == 2)
+
+
+# ---------------------------------------------------------------------------
+# Error-case tests
+# ---------------------------------------------------------------------------
+
+
+def test_process_image_missing_file_returns_empty(
+    tmp_path, mock_detector, mock_classifier
+):
+    """process_image with a path that does not exist should return [] without raising."""
+    result = process_image(
+        tmp_path / "does_not_exist.jpg", mock_detector, mock_classifier, _CFG
+    )
+    assert result == []
+
+
+def test_process_image_missing_file_logs_warning(
+    tmp_path, mock_detector, mock_classifier, caplog
+):
+    """process_image with an unreadable path should emit a WARNING."""
+    with caplog.at_level(logging.WARNING):
+        process_image(
+            tmp_path / "does_not_exist.jpg", mock_detector, mock_classifier, _CFG
+        )
+    assert any("Could not read" in r.message for r in caplog.records)
+
+
+def test_process_directory_empty_dir_returns_empty_csv(
+    tmp_path, mock_detector, mock_classifier
+):
+    """process_directory on a directory with no JPEGs should write an empty CSV."""
+    img_dir = tmp_path / "empty"
+    img_dir.mkdir()
+    output_csv = tmp_path / "out.csv"
+    df = process_directory(img_dir, output_csv, mock_detector, mock_classifier, _CFG)
+    assert output_csv.exists()
+    assert len(df) == 0

@@ -118,3 +118,48 @@ def test_train_model_early_stopping_no_error(tmp_path):
     # Must have stopped early (epoch <= 10) and returned valid dict
     assert result["best_epoch"] >= 1
     assert result["best_val_loss"] >= 0.0
+
+
+def test_nonexistent_model_path_logs_warning(tmp_path, caplog):
+    """A non-existent model_path should log a warning instead of raising."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        clf = HummingbirdClassifier(
+            model_path=tmp_path / "does_not_exist.pt", device="cpu"
+        )
+    assert clf is not None
+    assert any("does not exist" in r.message for r in caplog.records)
+
+
+def test_train_model_raises_on_missing_hummingbird_class(tmp_path):
+    """train_model must raise ValueError when no 'hummingbird' subdir is present."""
+    for split in ("train", "val"):
+        for cls in ("robin", "sparrow"):
+            d = tmp_path / split / cls
+            d.mkdir(parents=True)
+            for i in range(2):
+                img = Image.fromarray(
+                    np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8)
+                )
+                img.save(d / f"{cls}_{i}.jpg")
+    clf = HummingbirdClassifier(model_path=None, device="cpu")
+    with pytest.raises(ValueError, match="hummingbird"):
+        clf.train_model(tmp_path / "train", tmp_path / "val", epochs=1)
+
+
+def test_train_model_only_one_class_raises(tmp_path):
+    """train_model must raise ValueError when only one class has samples."""
+    for split in ("train", "val"):
+        d = tmp_path / split / "hummingbird"
+        d.mkdir(parents=True)
+        # 'other' directory exists but is empty
+        (tmp_path / split / "other").mkdir(parents=True)
+        for i in range(2):
+            img = Image.fromarray(
+                np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8)
+            )
+            img.save(d / f"hb_{i}.jpg")
+    clf = HummingbirdClassifier(model_path=None, device="cpu")
+    with pytest.raises(Exception):  # ValueError or ImageFolder error
+        clf.train_model(tmp_path / "train", tmp_path / "val", epochs=1)

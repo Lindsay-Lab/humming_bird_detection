@@ -13,6 +13,30 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_CONFIG_PATH = _project_paths.data.interim / "pipeline.yaml"
 
+# Minimum required structure of a valid pipeline config.
+_REQUIRED_KEYS: dict[str, set[str]] = {
+    "image": {"margin_px"},
+    "detector": {"model", "bird_class_id", "confidence_threshold"},
+    "classifier": {"model", "image_size", "confidence_threshold"},
+    "preprocessing": {"pad_fraction"},
+}
+
+
+def _validate_config(cfg: dict) -> None:
+    """Raise KeyError if cfg is missing any required section or key."""
+    for section, keys in _REQUIRED_KEYS.items():
+        if section not in cfg:
+            raise KeyError(
+                f"Pipeline config is missing required section '{section}'. "
+                f"Check data/interim/pipeline.yaml."
+            )
+        for key in keys:
+            if key not in cfg[section]:
+                raise KeyError(
+                    f"Pipeline config is missing required key '{section}.{key}'. "
+                    f"Check data/interim/pipeline.yaml."
+                )
+
 
 def load_config(path: str | Path | None = None) -> dict:
     """Load pipeline.yaml and return its contents as a plain dict."""
@@ -25,5 +49,6 @@ def load_config(path: str | Path | None = None) -> dict:
     yaml = YAML()
     with resolved.open() as fh:
         cfg = yaml.load(fh)
+    _validate_config(cfg)
     logger.debug("Loaded config from %s", resolved)
     return dict(cfg)

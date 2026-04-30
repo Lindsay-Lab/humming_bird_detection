@@ -1,0 +1,29 @@
+name: hbd
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.12
+  - black
+  - flake8
+  - isort
+  - pip
+  - setuptools
+  - typer
+  - loguru
+  - ipython
+  - jupyterlab
+  - matplotlib
+  - notebook
+  - numpy
+  - pandas
+  - scikit-learn
+  - pytorch
+  - torchvision
+  - pytorch-cuda=12.4   # cluster has CUDA 13.0; using 12.4 (latest PyTorch build, backward compatible)
+  - libjpeg-turbo
+  - pkg-config
+  - pip:
+    - python-dotenv
+    - -e .
