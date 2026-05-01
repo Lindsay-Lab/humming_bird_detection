@@ -17,38 +17,26 @@ requires-python = "~=3.12"
 
 dependencies = [
   "ruamel.yaml >=0.18.3",
-  "python-dotenv >=1.0.1",
-  "scipy >=1.9",
+  "pyyaml >=6.0",
   "numpy >=1.26.4",
-  "snakemake >=8.10.0",
-  "snakemake-executor-plugin-cluster-generic >=1.0.0",
   "pandas >=1.2.0",
-  "scikit-learn >=1.1.0",
-  "scikit-image >=0.20.0",
   "torch >=2.2.0",
   "torchvision >=0.16.0",
-  "torchsummary >=1.5.0",
   "opencv-python >=4.9.0",
+  "pillow >=10.0.0",
   "matplotlib >=3.5.1",
   "seaborn >=0.13.0",
-  "jupyterlab >=4.0.0",
-  "ipympl >=0.7.0",
-  "tqdm >=4.66.0",
+  "requests >=2.31.0",
   "wandb",
   "pytorch-lightning",
-  "tensorboard",
-  "cupy >= 13.3.0",
-  "numba >= 0.60.0",
   "ultralytics",
   "easyocr",
-  "click >=8.0",
   "sahi",
-  # install via conda/mamba:
-  # "cudatoolkit >= 11.3", 
-  # "libjpeg-turbo >= 3.0.0",
-  # "opencv-python >= 4.10.0",
-  # "pkg-config >= 0.29.2",
-  # "ffcv >= 1.0.2",
+]
+
+[project.optional-dependencies]
+gpu = [
+  "cupy-cuda12x >= 13.3.0",
 ]
 
 [project.scripts]

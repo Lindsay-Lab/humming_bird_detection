@@ -32,7 +32,9 @@ def _make_results(rows: list[list[float]]) -> list[MagicMock]:
 @pytest.fixture
 def detector():
     with patch("humming_bird_detection.models.detector.YOLO") as mock_yolo_cls:
-        mock_yolo_cls.return_value = MagicMock()
+        mock_model = MagicMock()
+        mock_model.names = {14: "bird"}
+        mock_yolo_cls.return_value = mock_model
         d = BirdDetector(
             model_path=Path("/fake/model.pt"),
             bird_class_id=14,

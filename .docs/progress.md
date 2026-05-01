@@ -26,6 +26,24 @@
 **Run unit tests only:** `pytest tests/ -m "not integration"`  
 **Run integration test:** `pytest tests/test_integration_real_image.py -v -s`
 
+---
+
+## Classifier training — run `20260430_193523` (2026-04-30)
+
+| Item | Value |
+|---|---|
+| Run ID | `20260430_193523` (W&B: `lnjepxc0`) |
+| Model | EfficientNetV2-S (ImageNet backbone + binary head) |
+| Training data | `data/interim/train_data/train/` (1176 hummingbird + 2518 other WingSCapes crops) |
+| Val data | `data/interim/train_data/val/` (294 hummingbird + 629 other) |
+| Best epoch | 7 (early-stopped at epoch 12, patience=5) |
+| val/loss | 0.0804 |
+| val/accuracy | ~0.990 |
+| val/f1 | ~0.980 |
+| val/precision | ~0.950 |
+| val/recall | ~0.990 |
+| Weights | `models/hummingbird_classifier_20260430_193523.pt` (→ symlinked as `hummingbird_classifier.pt`) |
+
 ### Deferred
 
 | Step | Component | Reason for deferral |
@@ -39,7 +57,7 @@
 
 ---
 
-## Real-image validation — `13_WSCT0033.JPG` (2026-04-29)
+## Real-image validation — `13_WSCT0033.JPG` (2026-04-29 / 2026-05-01)
 
 **Image:** WingSCapes trail camera, 8704×4896 px, 4.3 MB JPEG  
 **Ground truth:** 1 hummingbird (labeled in `13_WSCT0033.json`)
@@ -48,16 +66,18 @@
 |---|---|---|
 | Metadata OCR | ✅ All 4 fields parsed | temp=86°F, CAMERA 5, 12 FEB 2024, 04:18 PM |
 | YOLO direct (640 px) | ❌ Bird missed | Detected feeder as "cup" only (CH-01, CH-02) |
-| SAHI tiled (1280 px) | ✅ 1 bird found | Correct region; **34 s CPU** (warm SAHI + EasyOCR) |
-| EfficientNet classifier | ⚠️ conf=0.627, label=1 (`hummingbird: True`) | ImageNet weights only; result varies by crop (CH-05) |
+| SAHI tiled (1280 px) | ✅ 1 bird found | Correct region; **27–34 s CPU** (warm SAHI + EasyOCR) |
+| EfficientNet classifier (ImageNet only, 2026-04-29) | ⚠️ conf=0.446, label=0 | Near-random, expected (CH-05) |
+| EfficientNet classifier (fine-tuned, 2026-05-01) | ❌ conf=0.362, label=0 (`hummingbird: False`) | **False negative** despite 99 % val accuracy; domain gap (CH-08) |
 
 ---
 
 ## Known issues / open questions
 
-1. **Classifier needs fine-tuning** — currently uses ImageNet weights only, so
-   hummingbird classification is random near 50%.  Labeled crops from the
-   Trochilidae iNaturalist dataset (in `data/raw/Trochilidae/`) are available.
+1. **Classifier domain gap (CH-08)** — fine-tuned model achieves 99 % val accuracy
+   on iNaturalist crops but produces a false negative on the real camera-trap image
+   (`conf=0.362`).  A second training round with domain-adaptation augmentation
+   (color jitter, background patches) is required.
 
 2. **OCR F→' misread** — temperature field regex broadened to accept quote
    characters as a proxy for `F`.  Should be validated on more images from

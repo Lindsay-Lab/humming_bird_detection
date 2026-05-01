@@ -69,7 +69,7 @@ def process_image(
                 "n_birds": len(detections),
                 "detection_confidence": det.confidence,
                 "classification_confidence": conf,
-                "hummingbird": label,
+                "hummingbird": bool(label),
             }
         )
     return records

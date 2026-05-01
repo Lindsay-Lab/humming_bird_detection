@@ -106,10 +106,10 @@ def require_image():
 
 
 def test_pipeline_returns_record(pipeline_result):
-    """process_image must return a non-None dict when a bird is present."""
+    """process_image must return a non-empty list when a bird is present."""
     result, _, _ = pipeline_result
-    assert result is not None, (
-        "process_image returned None — no bird was detected. "
+    assert len(result) > 0, (
+        "process_image returned an empty list — no bird was detected. "
         "Check SAHI slice_size and bird_class_id in pipeline.yaml."
     )
 
@@ -117,21 +117,21 @@ def test_pipeline_returns_record(pipeline_result):
 def test_n_birds_at_least_one(pipeline_result, ground_truth):
     """At least as many birds detected as in the ground-truth annotation."""
     result, _, _ = pipeline_result
-    if result is None:
+    if not result:
         pytest.skip("No detection — upstream test already failed.")
     n_gt = len(ground_truth["boxes"])
     assert (
-        result["n_birds"] >= 1
-    ), f"Expected ≥1 bird (GT has {n_gt}), got {result['n_birds']}"
+        result[0]["n_birds"] >= 1
+    ), f"Expected ≥1 bird (GT has {n_gt}), got {result[0]['n_birds']}"
 
 
 def test_metadata_date_parsed(pipeline_result):
     """Camera date field must be parsed correctly."""
     result, _, _ = pipeline_result
-    if result is None:
+    if not result:
         pytest.skip("No detection — upstream test already failed.")
-    assert result["date"] == "12 FEB 2024", (
-        f"Unexpected date: {result['date']!r}. "
+    assert result[0]["date"] == "12 FEB 2024", (
+        f"Unexpected date: {result[0]['date']!r}. "
         "Check EasyOCR output and date regex in metadata.py."
     )
 
@@ -139,47 +139,47 @@ def test_metadata_date_parsed(pipeline_result):
 def test_metadata_time_parsed(pipeline_result):
     """Camera time field must be non-None (regex tolerates OCR spaces around colon)."""
     result, _, _ = pipeline_result
-    if result is None:
+    if not result:
         pytest.skip("No detection — upstream test already failed.")
-    assert result["time"] is not None, "Time field was not parsed from OCR margin."
+    assert result[0]["time"] is not None, "Time field was not parsed from OCR margin."
 
 
 def test_metadata_camera_parsed(pipeline_result):
     """Camera ID must be parsed correctly."""
     result, _, _ = pipeline_result
-    if result is None:
+    if not result:
         pytest.skip("No detection — upstream test already failed.")
     assert (
-        result["camera"] == "CAMERA 5"
-    ), f"Unexpected camera_id: {result['camera']!r}"
+        result[0]["camera"] == "CAMERA 5"
+    ), f"Unexpected camera_id: {result[0]['camera']!r}"
 
 
 def test_metadata_temperature_parsed(pipeline_result):
     """Temperature must be parsed as a float (OCR misreads F as apostrophe)."""
     result, _, _ = pipeline_result
-    if result is None:
+    if not result:
         pytest.skip("No detection — upstream test already failed.")
     # temperature is in the dict via metadata, which is embedded in result indirectly;
     # this field is not currently surfaced in the pipeline record dict — assert
     # that the pipeline at least ran OCR (time/date/camera present implies full parse ran)
-    assert result["date"] is not None, "OCR did not run at all."
+    assert result[0]["date"] is not None, "OCR did not run at all."
 
 
 def test_classifier_confidence_in_range(pipeline_result):
     """Classifier confidence must be a valid probability in [0, 1]."""
     result, _, _ = pipeline_result
-    if result is None:
+    if not result:
         pytest.skip("No detection — upstream test already failed.")
-    conf = result["classification_confidence"]
+    conf = result[0]["classification_confidence"]
     assert 0.0 <= conf <= 1.0, f"Classifier confidence out of range: {conf}"
 
 
 def test_hummingbird_field_is_bool(pipeline_result):
     """hummingbird field must be a boolean (True/False, not None or string)."""
     result, _, _ = pipeline_result
-    if result is None:
+    if not result:
         pytest.skip("No detection — upstream test already failed.")
-    assert isinstance(result["hummingbird"], bool)
+    assert isinstance(result[0]["hummingbird"], bool)
 
 
 def test_runtime_recorded(pipeline_result):
@@ -198,7 +198,7 @@ def test_runtime_recorded(pipeline_result):
 def test_result_has_all_expected_keys(pipeline_result):
     """Output dict must contain exactly the documented schema keys."""
     result, _, _ = pipeline_result
-    if result is None:
+    if not result:
         pytest.skip("No detection — upstream test already failed.")
     expected = {
         "filename",
@@ -210,5 +210,5 @@ def test_result_has_all_expected_keys(pipeline_result):
         "hummingbird",
     }
     assert expected.issubset(
-        set(result.keys())
-    ), f"Missing keys: {expected - set(result.keys())}"
+        set(result[0].keys())
+    ), f"Missing keys: {expected - set(result[0].keys())}"

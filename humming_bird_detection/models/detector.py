@@ -79,10 +79,35 @@ class BirdDetector:
     # ------------------------------------------------------------------
 
     def detect(self, image: np.ndarray) -> list[Detection]:
-        """Return bird detections; uses SAHI tiling when slice_size is set."""
-        if self.slice_size is not None:
-            return self._detect_tiled(image)
-        return self._detect_direct(image)
+        """Return bird detections.
+
+        When slice_size is set, first tries a direct full-image YOLO pass.  If
+        any birds are found, those detections are returned immediately (no
+        tiling overhead).  Only if the direct pass finds nothing does the
+        detector fall back to SAHI tiled inference.
+
+        This two-stage approach handles both regimes:
+        - Large / near-camera birds: YOLO sees them at full resolution even
+          after its internal 640 px downscale (a 4130×2350 px bird maps to
+          ~303×172 px in YOLO's input space — well above its detection floor).
+        - Small / far-camera birds: YOLO misses them at full resolution
+          (~15 px after downscale); SAHI tiling recovers them.
+
+        When slice_size is None, only direct inference is used.
+        """
+        if self.slice_size is None:
+            return self._detect_direct(image)
+
+        direct = self._detect_direct(image)
+        if direct:
+            logger.info(
+                "Direct YOLO pass: %d bird(s) found — skipping SAHI tiling",
+                len(direct),
+            )
+            return direct
+
+        logger.info("Direct YOLO pass: no birds found — running SAHI tiled inference")
+        return self._detect_tiled(image)
 
     # ------------------------------------------------------------------
     # Private helpers
