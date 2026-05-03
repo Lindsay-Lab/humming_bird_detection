@@ -1,12 +1,20 @@
 # Hummingbird Detection
 
-Automated detection and classification of hummingbirds in wildlife camera images.
+[![Docs](https://github.com/Lindsay-Lab/Humming_Bird_Detection/actions/workflows/docs.yml/badge.svg)](https://Lindsay-Lab.github.io/Humming_Bird_Detection/)
+[![Lint](https://github.com/Lindsay-Lab/Humming_Bird_Detection/actions/workflows/black.yml/badge.svg)](https://github.com/Lindsay-Lab/Humming_Bird_Detection/actions/workflows/black.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+Automated detection and classification of hummingbirds in wildlife camera-trap images.
 
 The pipeline processes batches of camera-trap JPEGs and outputs a structured CSV of bird observations. Each image is:
-1. **Cropped** to remove the camera metadata strip at the bottom.
+1. **Cropped** — the camera metadata strip is separated from the clean image frame.
 2. **Detected** — YOLO finds bounding boxes around birds (direct full-image pass first, SAHI tiling fallback for small distant birds).
 3. **Classified** — an EfficientNetV2-S model labels each letterboxed crop as hummingbird or other.
 4. **Annotated** — date, time, temperature, and camera ID are extracted via OCR.
+
+> **Classifier performance** (best checkpoint, val set): accuracy **99.35%** · F1 **98.98%** · precision **98.65%** · recall **99.32%**
 
 ## Pipeline overview
 
@@ -82,14 +90,14 @@ process_directory('path/to/images', None, build_detector(cfg), build_classifier(
 
 ## Documentation
 
-Full documentation lives in [`docs/`](docs/index.md).
+Full documentation is available at **[Lindsay-Lab.github.io/Humming_Bird_Detection](https://Lindsay-Lab.github.io/Humming_Bird_Detection/)**.
 
 | Section | Purpose |
 |---------|---------|
-| [Tutorial](docs/tutorials/getting-started.md) | Step-by-step first run |
-| [How-to guides](docs/how-to/) | Task-oriented recipes |
-| [Explanation](docs/explanation/) | Architecture and design rationale |
-| [Reference](docs/reference/) | Config options and Python API |
+| [Tutorial](https://Lindsay-Lab.github.io/Humming_Bird_Detection/tutorials/getting-started/) | Step-by-step first run |
+| [How-to guides](https://Lindsay-Lab.github.io/Humming_Bird_Detection/how-to/run-pipeline/) | Task-oriented recipes |
+| [Explanation](https://Lindsay-Lab.github.io/Humming_Bird_Detection/explanation/architecture/) | Architecture and design rationale |
+| [Reference](https://Lindsay-Lab.github.io/Humming_Bird_Detection/reference/config/) | Config options and Python API |
 
 ## Project layout
 
@@ -107,5 +115,8 @@ humming_bird_detection/   Python package
 scripts/
   prepare_training_data.py  Build train/val image sets
   train_classifier.py       Fine-tune the classifier
+docs/
+  scripts/
+    generate_doc_images.py  Generate documentation image assets
 data/interim/pipeline.yaml  Runtime configuration
 ```
