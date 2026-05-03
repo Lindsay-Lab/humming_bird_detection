@@ -9,7 +9,11 @@ import numpy as np
 import pytest
 import torch
 
-from humming_bird_detection.models.detector import BirdDetector, Detection, build_detector
+from humming_bird_detection.models.detector import (
+    BirdDetector,
+    Detection,
+    build_detector,
+)
 
 
 def _make_boxes(rows: list[list[float]]) -> MagicMock:
