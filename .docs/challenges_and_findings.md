@@ -312,3 +312,60 @@ in large images; this bird is a large object in a large image.
      scales including full-frame fills.
   3. **Accept as edge case**: if normal feeder images have birds at typical
      distance (~200–500 px), this close-camera case may be rare in practice.
+
+---
+
+## CH-10 — Duplicate detection limited by minute-precision OCR timestamps
+
+**Context:** `flag_duplicates()` in `postprocessing.py` compares parsed
+`date`/`time` strings from OCR metadata to decide whether two successive images
+are close enough in time to represent the same hummingbird visit.  The WingSCapes
+metadata strip encodes time as `HH:MM AM/PM` — minute precision only.  No
+sub-minute information is available.
+
+**Observed consequence:**
+
+The effective temporal resolution is ±60 seconds per minute boundary.  Two
+images separated by up to 59 seconds within the same clock minute appear
+simultaneous (Δt = 0 s), while two images separated by exactly 1 minute
+appear 60 seconds apart regardless of the actual gap.
+
+For the `window_seconds: 18` default this creates two failure modes:
+
+| Scenario | Gap | Parsed Δt | Result | Expected |
+|---|---|---|---|---|
+| Two birds 10 s apart, same minute | ~10 s | 0 s ≤ 18 s | `is_duplicate=True` | False — different birds |
+| Same bird, 20 s apart, minute boundary | ~20 s | 60 s > 18 s | `is_duplicate=False` | True — duplicate |
+
+**Quantitative impact on the default 18 s window:**
+
+The minimum detectable gap is 60 seconds (one minute boundary).  The
+`window_seconds` parameter therefore has no discriminating power between images
+within the same clock minute — all such images are always flagged as duplicates
+(gap = 0).  For images spanning a minute boundary, the effective minimum
+non-duplicate gap is 60 s regardless of the configured window.  The window
+parameter is meaningful only for values ≥ 60 s (where it can distinguish a
+1-minute gap from a 2-minute gap).
+
+**Design decision:** The implementation is conservative: when `date` or `time`
+cannot be parsed, the image is treated as non-duplicate.  False negatives
+(missed duplicates) are preferred over false positives (incorrectly discarded
+genuine sightings), because downstream analysis can always further filter by
+`is_duplicate`, but a falsely discarded record cannot be recovered.
+
+**Open mitigations:**
+1. **Use filename sort order as a tiebreaker within the same minute** — already
+   implemented.  When two images share the same parsed timestamp, the one with
+   the lexicographically later filename is flagged as duplicate.  This is
+   correct when filenames encode a frame counter or timestamp (common in camera
+   traps), but incorrect when filenames are unordered.
+2. **Use EXIF sub-second timestamp** — camera trap JPEG files often contain
+   `DateTimeOriginal` with second precision in EXIF metadata.  Parsing this via
+   `piexif` or `Pillow` would provide 1 s resolution and eliminate the failure
+   modes above.  Not yet implemented.
+3. **Accept as algorithmic limitation** — for typical hummingbird feeder
+   deployments with 15–30 s inter-frame intervals, the false-negative rate
+   (missed same-bird duplicates across minute boundaries) is bounded by the
+   fraction of visits that straddle a clock minute.  For uniform random arrivals
+   this is approximately `min(window_seconds, 60) / 60` ≈ 18/60 = 30 %, which
+   is non-trivial but may be tolerable for exploratory counting applications.
