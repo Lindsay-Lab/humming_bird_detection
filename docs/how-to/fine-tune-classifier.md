@@ -32,7 +32,7 @@ python scripts/train_classifier.py \
     --seed      42
 ```
 
-The script saves the best checkpoint to `models/hummingbird_classifier_<run_id>.pt` and a companion `<run_id>.json` with all hyperparameters and results.
+The script saves the best checkpoint to `models/hummingbird_classifier_<run_id>.pt` and a `<run_id>_metadata.json` file with all hyperparameters, results, wandb metadata, and summary.
 
 ### 3. Key options
 

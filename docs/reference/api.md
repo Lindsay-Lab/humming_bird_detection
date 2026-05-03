@@ -128,4 +128,12 @@ Returns `[]` if the image cannot be read or no birds are detected.
 
 Process all `.jpg` / `.JPG` files in `input_dir`. Writes results to `output_csv` (parent directories created automatically).
 
-**Returns:** `pandas.DataFrame` of all observation records.
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `input_dir` | `str \| Path` | — | Directory containing JPEG images to process. |
+| `output_csv` | `str \| Path \| None` | `None` | Output path for the CSV. When `None`, auto-generates a timestamped path under `reports/`. |
+| `detector` | `BirdDetector` | — | Configured detector instance. |
+| `classifier` | `HummingbirdClassifier` | — | Configured classifier instance. |
+| `cfg` | `dict` | — | Config dict as returned by `load_config()`. |
+
+**Returns:** `pandas.DataFrame` of all observation records (one row per detected bird across all images).

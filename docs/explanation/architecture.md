@@ -2,6 +2,8 @@
 
 The pipeline transforms a raw camera-trap image into a structured record that answers: *is there a hummingbird in this photo, and if so where?*
 
+![Pipeline overview](../assets/images/pipeline_overview.png)
+
 ## Pipeline stages
 
 ```
@@ -41,6 +43,8 @@ Camera-trap images often contain a burned-in status strip at the bottom (tempera
 
 Bird detection uses a two-stage strategy controlled by `detector.slice_size` in `pipeline.yaml`:
 
+![Detection strategy](../assets/images/detection_strategy.png)
+
 1. **Direct full-image pass** — YOLO runs on the full (margin-stripped) image first. If any birds are found, those detections are returned immediately. This is fast (< 0.5 s) and handles birds that are large enough to be visible at YOLO's 640 px input resolution (typically birds close to the camera, ≥ 500 px in the original image).
 
 2. **SAHI tiled fallback** — If the direct pass finds nothing, SAHI (Slicing Aided Hyper Inference) divides the image into overlapping tiles, runs YOLO on each tile, and merges detections with NMS. This recovers small distant birds (≈ 15 px after YOLO downscale) at the cost of higher inference time (~34 s on CPU).
@@ -54,6 +58,8 @@ SAHI NMS merges detections by IoU. When a bird is *larger* than the tile size (e
 ## Aspect-ratio-preserving crop
 
 Each detected bounding box is cropped from the image and resized to 224 × 224 for the classifier. Before resizing, the crop is **letterboxed** to a square by padding the shorter dimension with the per-channel mean colour of the crop. This ensures the aspect ratio of the detection is preserved regardless of its shape (e.g. a tall narrow 208 × 640 px SAHI sliver would otherwise be stretched ~3 × horizontally, producing an unrecognisable input for the classifier).
+
+![Letterbox illustration](../assets/images/letterbox_illustration.png)
 
 ## Detect-then-classify architecture
 

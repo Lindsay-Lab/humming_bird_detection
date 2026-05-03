@@ -17,6 +17,7 @@ import wandb
 
 from humming_bird_detection.models.classifier import HummingbirdClassifier
 from humming_bird_detection.project_paths import project_paths
+from humming_bird_detection.utils.wandb_fetcher import save_all_wandb_data
 
 logging.basicConfig(
     level=logging.INFO,
@@ -136,6 +137,15 @@ def main() -> None:
     )
     logger.info("Model saved to: %s", args.output_path)
 
+    # ── fetch WandB data (local → API): history, system metrics, metadata,
+    #    summary, and output log — saved alongside the checkpoint ────────────
+    if wandb_run is not None:
+        saved = save_all_wandb_data(wandb_run, args.output_path)
+        logger.info(
+            "WandB data saved: %s",
+            {k: (str(v) if v else "unavailable") for k, v in saved.items()},
+        )
+
     if wandb_run is not None:
         artifact = wandb.Artifact(
             name=f"hummingbird_classifier_{_RUN_ID}",
@@ -156,7 +166,7 @@ def main() -> None:
         wandb_run.finish()
         logger.info("W&B run finished: %s", wandb_run.url)
 
-    # ── save companion config for provenance ────────────────────────────────
+    # ── save metadata for provenance (wandb enriches this later) ─────────────
     def _git_hash() -> str:
         try:
             return (
@@ -198,10 +208,12 @@ def main() -> None:
         },
         "output_path": str(args.output_path),
     }
-    config_path = Path(args.output_path).with_suffix(".json")
+    out_dir = Path(args.output_path).parent
+    stem = Path(args.output_path).stem
+    config_path = out_dir / f"{stem}_metadata.json"
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
-    logger.info("Config saved to: %s", config_path)
+    logger.info("Metadata saved to: %s", config_path)
 
 
 if __name__ == "__main__":

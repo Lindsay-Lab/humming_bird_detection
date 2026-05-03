@@ -85,9 +85,20 @@ The CSV has one row per detected bird:
 | `filename` | source image filename |
 | `date`, `time` | from camera OCR |
 | `camera` | camera ID from OCR |
-| `hummingbird` | `1` = hummingbird, `0` = other bird |
+| `is_hummingbird` | `True` = hummingbird, `False` = other bird |
 | `classification_confidence` | model probability (0–1) |
 | `detection_confidence` | YOLO confidence (0–1) |
+
+Example output:
+
+| filename | date | time | camera | is_hummingbird | classification_confidence | detection_confidence |
+|---|---|---|---|---|---|---|
+| WSCT0033_001.JPG | 2024-05-12 | 07:14:03 | WSCT0033 | True | 0.93 | 0.87 |
+| WSCT0033_002.JPG | 2024-05-12 | 07:14:12 | WSCT0033 | False | 0.08 | 0.72 |
+
+The classifier distinguishes hummingbirds from other bird species visiting the feeder:
+
+![Classifier input examples](../assets/images/classification_examples.png)
 
 ---
 

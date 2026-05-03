@@ -1,11 +1,68 @@
 site_name: Hummingbird Detection
-site_description: Automated hummingbird identification from wildlife camera images.
+site_description: Automated hummingbird identification from wildlife camera-trap images.
+site_url: https://rgutzen.github.io/Humming_Bird_Detection/
 repo_url: https://github.com/rgutzen/Humming_Bird_Detection
+repo_name: rgutzen/Humming_Bird_Detection
+edit_uri: edit/main/docs/
+docs_dir: docs
+copyright: Copyright &copy; 2024 Robin Gutzen
 
 theme:
   name: material
   palette:
-    primary: green
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      accent: light green
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: light green
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/rgutzen/Humming_Bird_Detection
 
 nav:
   - Home: index.md
@@ -15,6 +72,9 @@ nav:
       - Run the pipeline: how-to/run-pipeline.md
       - Fine-tune the classifier: how-to/fine-tune-classifier.md
       - Prepare training data: how-to/prepare-training-data.md
+  - Training Reports:
+      - Overview: training-reports/index.md
+      - 20260430_193523: training-reports/hummingbird_classifier_20260430_193523.md
   - Explanation:
       - Pipeline architecture: explanation/architecture.md
       - Design decisions: explanation/design-decisions.md
