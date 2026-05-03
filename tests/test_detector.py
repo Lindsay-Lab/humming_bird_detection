@@ -29,20 +29,6 @@ def _make_results(rows: list[list[float]]) -> list[MagicMock]:
     return [result]
 
 
-@pytest.fixture
-def detector():
-    with patch("humming_bird_detection.models.detector.YOLO") as mock_yolo_cls:
-        mock_model = MagicMock()
-        mock_model.names = {14: "bird"}
-        mock_yolo_cls.return_value = mock_model
-        d = BirdDetector(
-            model_path=Path("/fake/model.pt"),
-            bird_class_id=14,
-            confidence_threshold=0.3,
-        )
-    return d
-
-
 # ---------------------------------------------------------------------------
 
 
@@ -86,6 +72,44 @@ def test_other_inference_error_returns_empty(detector):
     """Non-OOM RuntimeErrors are caught, logged, and return empty list."""
     detector._model.side_effect = RuntimeError("invalid model format")
     result = detector.detect(np.zeros((300, 300, 3), dtype=np.uint8))
+    assert result == []
+
+
+def test_unexpected_exception_returns_empty(detector):
+    """Non-RuntimeError exceptions are caught and return empty list."""
+    detector._model.side_effect = ValueError("unexpected")
+    result = detector.detect(np.zeros((300, 300, 3), dtype=np.uint8))
+    assert result == []
+
+
+def test_sahi_oom_is_reraised(tiled_detector):
+    """OOM during SAHI tiling must propagate, not be swallowed."""
+    # Direct pass returns nothing so we fall through to SAHI
+    empty = MagicMock()
+    empty.boxes = None
+    tiled_detector._model.return_value = [empty]
+
+    with patch(
+        "humming_bird_detection.models.detector.get_sliced_prediction",
+        side_effect=RuntimeError("CUDA out of memory."),
+    ):
+        with patch.object(tiled_detector, "_get_sahi_model", return_value=MagicMock()):
+            with pytest.raises(RuntimeError, match="out of memory"):
+                tiled_detector.detect(np.zeros((4000, 6000, 3), dtype=np.uint8))
+
+
+def test_sahi_non_oom_error_returns_empty(tiled_detector):
+    """Non-OOM errors during SAHI tiling are caught and return empty list."""
+    empty = MagicMock()
+    empty.boxes = None
+    tiled_detector._model.return_value = [empty]
+
+    with patch(
+        "humming_bird_detection.models.detector.get_sliced_prediction",
+        side_effect=RuntimeError("model format error"),
+    ):
+        with patch.object(tiled_detector, "_get_sahi_model", return_value=MagicMock()):
+            result = tiled_detector.detect(np.zeros((4000, 6000, 3), dtype=np.uint8))
     assert result == []
 
 
