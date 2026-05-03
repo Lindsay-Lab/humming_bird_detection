@@ -4,9 +4,62 @@ Automated detection and classification of hummingbirds in wildlife camera images
 
 The pipeline processes batches of camera-trap JPEGs and outputs a structured CSV of bird observations. Each image is:
 1. **Cropped** to remove the camera metadata strip at the bottom.
-2. **Detected** — YOLO finds bounding boxes around birds.
-3. **Classified** — an EfficientNetV2-S model labels each crop as hummingbird or other.
+2. **Detected** — YOLO finds bounding boxes around birds (direct full-image pass first, SAHI tiling fallback for small distant birds).
+3. **Classified** — an EfficientNetV2-S model labels each letterboxed crop as hummingbird or other.
 4. **Annotated** — date, time, temperature, and camera ID are extracted via OCR.
+
+## Pipeline overview
+
+```
+  Camera-trap JPEGs
+  (input directory)
+        │
+        ▼
+┌───────────────────┐
+│   Crop margin     │  Split image into clean frame
+│  (preprocessing)  │  and metadata strip (bottom)
+└────────┬──────────┘
+         │
+         ├─────────────────────────────────────────┐
+         │ clean image                             │ metadata strip
+         ▼                                         ▼
+┌──────────────────────────────────┐    ┌──────────────────────┐
+│  Bird detection (detector.py)    │    │   OCR metadata       │
+│                                  │    │  (metadata.py)       │
+│  1. Direct full-image YOLO pass  │    │  date, time,         │
+│     (fast; catches large birds)  │    │  temperature, camera │
+│  2. SAHI tiling fallback         │    └──────────┬───────────┘
+│     (catches small distant birds)│              │
+└────────┬─────────────────────────┘              │
+         │ per-bird bounding boxes                │
+         ▼                                        │
+┌───────────────────┐                             │
+│  Crop & resize    │  letterbox to square,       │
+│ (preprocessing)   │  then resize to 224×224     │
+└────────┬──────────┘                             │
+         ▼                                        │
+┌───────────────────┐                             │
+│  Classification   │  EfficientNetV2-S           │
+│  (classifier.py)  │  hummingbird / other        │
+│                   │  + class confidence         │
+└────────┬──────────┘                             │
+         │                                        │
+         └─────────────────┬──────────────────────┘
+                           ▼
+             ┌─────────────────────────┐
+             │   Combine per-bird      │
+             │       records           │
+             └─────────────┬───────────┘
+                           │
+                           ▼
+             ┌──────────────────────────────────────┐
+             │  reports/<input_name>_<timestamp>.csv │
+             │        (one row per bird)             │
+             └──────────────────────────────────────┘
+                  from OCR metadata ──► filename, date, time, temperature, camera
+                  from detection    ──► bird_index, detection_confidence
+                  from classifier   ──► classification_confidence, hummingbird (bool)
+```
 
 ## Quick start
 
@@ -22,7 +75,8 @@ from humming_bird_detection.models.classifier import build_classifier
 from humming_bird_detection.workflow.pipeline import process_directory
 
 cfg = load_config()
-process_directory('path/to/images', 'output.csv', build_detector(cfg), build_classifier(cfg), cfg)
+# output defaults to reports/<folder_name>_<YYYYMMDD_HHMMSS>.csv
+process_directory('path/to/images', None, build_detector(cfg), build_classifier(cfg), cfg)
 "
 ```
 

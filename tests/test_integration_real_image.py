@@ -175,11 +175,11 @@ def test_classifier_confidence_in_range(pipeline_result):
 
 
 def test_hummingbird_field_is_bool(pipeline_result):
-    """hummingbird field must be a boolean (True/False, not None or string)."""
+    """is_hummingbird field must be a boolean (True/False, not None or string)."""
     result, _, _ = pipeline_result
     if not result:
         pytest.skip("No detection — upstream test already failed.")
-    assert isinstance(result[0]["hummingbird"], bool)
+    assert isinstance(result[0]["is_hummingbird"], bool)
 
 
 def test_runtime_recorded(pipeline_result):
@@ -207,7 +207,7 @@ def test_result_has_all_expected_keys(pipeline_result):
         "camera",
         "n_birds",
         "classification_confidence",
-        "hummingbird",
+        "is_hummingbird",
     }
     assert expected.issubset(
         set(result[0].keys())

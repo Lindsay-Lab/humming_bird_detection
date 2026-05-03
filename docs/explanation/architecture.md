@@ -13,11 +13,14 @@ Raw image
 └────────┬────────────┘
          │ margin_px crop removed before detection
          ▼
-┌─────────────────────┐
-│   Bird detection    │  YOLO11n, COCO class 14 ("bird")
-│   (+ SAHI tiling)  │  optional sliding-window tiling for small subjects
-└────────┬────────────┘
+┌─────────────────────────────────────────────────────┐
+│   Bird detection                                    │
+│   1. Direct YOLO pass on full image (fast path)     │
+│   2. SAHI tiling fallback if direct pass misses     │
+│      overlapping tiles → NMS merge → bbox list      │
+└────────┬────────────────────────────────────────────┘
          │ one bounding-box crop per detected bird
+         │ (letterboxed to square before resize)
          ▼
 ┌─────────────────────┐
 │  Hummingbird        │  EfficientNetV2-S binary classifier
@@ -34,13 +37,25 @@ Structured record (CSV row)
 
 Camera-trap images often contain a burned-in status strip at the bottom (temperature, date/time, moon phase, sequence number). The `margin_px` setting tells the pipeline where this strip starts so it is cropped away before detection — otherwise the OCR digits can trigger false bird detections.
 
-## SAHI tiling
+## Detection strategy: direct pass + SAHI tiling
 
-Standard YOLO inference resizes the whole image to 640 × 640 before inference. Hummingbirds are small subjects and can be missed at this resolution. SAHI (Slicing Aided Hyper Inference) divides the image into overlapping tiles, runs YOLO on each, then merges the detections with NMS. This recovers small-subject detections at the cost of higher inference time.
+Bird detection uses a two-stage strategy controlled by `detector.slice_size` in `pipeline.yaml`:
 
-Tiling is controlled by the `detector.use_tiling` flag in `pipeline.yaml`.
+1. **Direct full-image pass** — YOLO runs on the full (margin-stripped) image first. If any birds are found, those detections are returned immediately. This is fast (< 0.5 s) and handles birds that are large enough to be visible at YOLO's 640 px input resolution (typically birds close to the camera, ≥ 500 px in the original image).
 
-## Two-stage architecture
+2. **SAHI tiled fallback** — If the direct pass finds nothing, SAHI (Slicing Aided Hyper Inference) divides the image into overlapping tiles, runs YOLO on each tile, and merges detections with NMS. This recovers small distant birds (≈ 15 px after YOLO downscale) at the cost of higher inference time (~34 s on CPU).
+
+When `slice_size` is `None`, only the direct pass is used (suitable for small pre-cropped inputs or fast-mode operation).
+
+### Limitation: very large objects
+
+SAHI NMS merges detections by IoU. When a bird is *larger* than the tile size (e.g. a bird very close to the camera, spanning multiple tiles), adjacent tile detections have low IoU (≈ 0.11 for a 4130 × 2350 px bird in 1280 px tiles) and are never merged. The direct pass handles this regime correctly because the bird maps to ≈ 300 × 170 px at YOLO's 640 px input — well above the detection floor.
+
+## Aspect-ratio-preserving crop
+
+Each detected bounding box is cropped from the image and resized to 224 × 224 for the classifier. Before resizing, the crop is **letterboxed** to a square by padding the shorter dimension with the per-channel mean colour of the crop. This ensures the aspect ratio of the detection is preserved regardless of its shape (e.g. a tall narrow 208 × 640 px SAHI sliver would otherwise be stretched ~3 × horizontally, producing an unrecognisable input for the classifier).
+
+## Detect-then-classify architecture
 
 A two-stage design (detect then classify) is more robust than a single-stage hummingbird detector for this dataset because:
 

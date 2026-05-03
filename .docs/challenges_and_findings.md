@@ -112,7 +112,7 @@ total tiles ≈ 9 × 5 = 45  (plus edge-overlap tiles → ≈56 in practice)
 
 **Observed (2026-04-29, ImageNet weights only):** On the test image crop (bird
 region, 224×224 px), the EfficientNetV2-S model with ImageNet-only weights
-output confidence 0.446 (below the 0.5 threshold → `hummingbird: False`).
+output confidence 0.446 (below the 0.5 threshold → `is_hummingbird: False`).
 
 **Expected:** Correct behaviour — ImageNet pre-training does not include a
 "hummingbird" binary class.  The model fires the sigmoid output near 0.5
@@ -188,7 +188,7 @@ after epoch 12.
 
 **Real-image inference (`13_WSCT0033.JPG`, 2026-05-01):**
 - `detection_confidence` (YOLO+SAHI): 0.364 — marginal but above 0.3 threshold
-- `classification_confidence`: **0.362** — below 0.5 threshold → `hummingbird: False`
+- `classification_confidence`: **0.362** — below 0.5 threshold → `is_hummingbird: False`
 - Ground truth: **1 hummingbird** present
 - Outcome: **false negative** despite 99 % validation accuracy
 
@@ -237,14 +237,19 @@ confirms the classifier is well-calibrated when given properly shaped crops.
 evaluation:
 - `process_image()` returns a list of records (one per bird) but tests indexed
   it as a single dict → fixed to `result[0][key]`.
-- `hummingbird` field was `int` (0/1) instead of `bool` (False/True) in
+- `is_hummingbird` field was `int` (0/1) instead of `bool` (False/True) in
   `pipeline.py` → fixed with `bool(label)`.
 All 10 integration tests pass post-fix.
 
-**Next steps:**
-1. ✅ Fix `crop_and_resize()` to letterbox non-square bboxes before resize (done 2026-05-01).
-2. Re-run pipeline on `13_WSCT0033.JPG` with the fix to verify the classifier now fires.
-3. Increasing SAHI tile size: investigated and **not recommended** as the primary fix
+**Resolution (2026-05-01):**
+
+1. ✅ `crop_and_resize()` now letterboxes non-square bboxes to a square (padded
+   with per-channel mean colour) before the `cv2.resize` call.  The 208×640
+   crop is centred in a 640×640 canvas and then resized — ~3× stretch eliminated.
+2. ✅ Re-ran pipeline on `13_WSCT0033.JPG` post-fix:
+   - `classification_confidence`: **0.994** (was 0.362) → `hummingbird: True` ✓
+   - All 10 integration tests pass.
+3. ✅ Tile size increase: investigated and **not recommended** as the primary fix
    (see CH-09 — the test bird fills any practical tile regardless of size).
 4. Collect additional annotated camera-trap frames for systematic evaluation.
 
@@ -298,9 +303,11 @@ in large images; this bird is a large object in a large image.
   confidence sliver detection now produces a usable crop for the classifier.
   This is sufficient for the current test image.
 - For systematic robustness to very-large-bird frames, options are:
-  1. **Direct-pass fallback**: if no SAHI detection fires above threshold, run
-     YOLO on the full image at native resolution (GT bird at 640px input ≈
-     303×172 px — well within detection range).
+  1. ✅ **Direct-pass first**: `BirdDetector.detect()` now always runs a direct
+     full-image YOLO pass before SAHI tiling.  If any birds are found in the
+     direct pass, SAHI is skipped.  This handles large near-camera birds without
+     tiling overhead, and falls back to SAHI for small distant birds.
+     Implemented 2026-05-01.
   2. **Fine-tune YOLO** on WingSCapes crops so it learns to detect birds at all
      scales including full-frame fills.
   3. **Accept as edge case**: if normal feeder images have birds at typical

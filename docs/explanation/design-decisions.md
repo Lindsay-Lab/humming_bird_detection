@@ -35,3 +35,19 @@ Separating configuration from code allows:
 1. **Reproducibility**: committing a YAML file to version control captures the exact settings used for a given analysis run.
 2. **Deployment flexibility**: changing `margin_px` or `confidence_threshold` for a new camera model does not require editing Python.
 3. **Validation**: `_validate_config()` checks for required keys at load time and fails loudly rather than silently using wrong defaults.
+
+## Why letterbox padding before classifier resize?
+
+When a bounding box is taller than it is wide (or vice versa), naively resizing it to a square (224 × 224) applies a non-uniform scale, stretching the content. During evaluation, a SAHI detection returned a 208 × 640 px bounding box (a narrow vertical sliver). Direct resize to 224 × 224 applied a ~3 × horizontal expansion, producing a smeared, unrecognisable image that the classifier correctly rejected as "not a hummingbird" — causing a false negative despite 99 % validation accuracy.
+
+The fix is to pad the shorter dimension to match the longer one (using the per-channel mean colour of the crop) before resizing. This centres the content in a square canvas, so the resize is uniform and aspect ratio is preserved. Per-channel mean fill avoids a hard black or white border that would be absent from training crops.
+
+## Why direct YOLO pass before SAHI tiling?
+
+SAHI tiling was designed for *small objects* in large images: it works by dividing the image into tiles small enough that the object is large relative to the tile, then merging per-tile detections with NMS. The NMS merge step requires an IoU of at least `nms_iou_threshold` (default 0.5) between adjacent detections.
+
+For *large objects* (bird much bigger than the tile), adjacent tile detections have very low IoU (≈ 0.11 for a bird spanning four tiles) and are never merged. The bird may only produce marginal detections at the edges of tiles where partial context is visible.
+
+Running a direct full-image YOLO pass first solves this regime: the large bird maps to ≈ 300 × 170 px at YOLO's 640 px input — well above the detection floor — so it is detected cleanly in a single pass. The SAHI fallback then handles the opposite regime (small distant birds, ≈ 15 px after YOLO downscale) when the direct pass finds nothing.
+
+This two-pass approach is strictly more capable than either strategy alone, at the cost of one extra YOLO inference call (< 0.5 s on CPU) before the ~34 s tiling step.

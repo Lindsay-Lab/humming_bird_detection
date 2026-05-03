@@ -81,7 +81,7 @@ def test_process_image_one_bird(tmp_path, mock_detector, mock_classifier):
     assert record["n_birds"] == 1
     assert record["detection_confidence"] == pytest.approx(0.8, abs=1e-4)
     assert record["classification_confidence"] == pytest.approx(0.92, abs=1e-4)
-    assert record["hummingbird"] == 1
+    assert record["is_hummingbird"] == 1
 
 
 def test_process_directory_creates_csv(tmp_path, mock_detector, mock_classifier):
@@ -121,7 +121,7 @@ def test_process_directory_creates_csv(tmp_path, mock_detector, mock_classifier)
         "n_birds",
         "detection_confidence",
         "classification_confidence",
-        "hummingbird",
+        "is_hummingbird",
     }
     assert expected_cols.issubset(set(df.columns))
 
@@ -168,8 +168,8 @@ def test_process_image_multiple_birds(tmp_path, mock_detector, mock_classifier):
     assert result[1]["bird_index"] == 1
     assert result[0]["detection_confidence"] == pytest.approx(0.75, abs=1e-4)
     assert result[1]["detection_confidence"] == pytest.approx(0.90, abs=1e-4)
-    assert result[0]["hummingbird"] == 1
-    assert result[1]["hummingbird"] == 0
+    assert result[0]["is_hummingbird"] == 1
+    assert result[1]["is_hummingbird"] == 0
     assert result[0]["classification_confidence"] == pytest.approx(0.88, abs=1e-4)
     assert result[1]["classification_confidence"] == pytest.approx(0.60, abs=1e-4)
 
