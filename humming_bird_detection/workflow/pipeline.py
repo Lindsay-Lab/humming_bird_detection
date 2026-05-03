@@ -13,6 +13,10 @@ from humming_bird_detection.data.metadata import parse_metadata, extract_margin
 from humming_bird_detection.data.preprocessing import crop_and_resize
 from humming_bird_detection.models.classifier import HummingbirdClassifier
 from humming_bird_detection.models.detector import BirdDetector
+from humming_bird_detection.workflow.postprocessing import (
+    apply_postprocessors,
+    build_postprocessors,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +106,7 @@ def process_directory(
         records.extend(process_image(img_path, detector, classifier, cfg))
 
     df = pd.DataFrame(records)
+    df = apply_postprocessors(df, build_postprocessors(cfg))
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_csv, index=False)
     logger.info(
