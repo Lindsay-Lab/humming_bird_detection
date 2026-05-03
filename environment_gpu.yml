@@ -10,8 +10,6 @@ dependencies:
   - isort
   - pip
   - setuptools
-  - typer
-  - loguru
   - ipython
   - jupyterlab
   - matplotlib

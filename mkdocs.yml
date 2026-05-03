@@ -1,8 +1,8 @@
 site_name: Hummingbird Detection
 site_description: Automated hummingbird identification from wildlife camera-trap images.
-site_url: https://rgutzen.github.io/Humming_Bird_Detection/
-repo_url: https://github.com/rgutzen/Humming_Bird_Detection
-repo_name: rgutzen/Humming_Bird_Detection
+site_url: https://Lindsay-Lab.github.io/Humming_Bird_Detection/
+repo_url: https://github.com/Lindsay-Lab/Humming_Bird_Detection
+repo_name: Lindsay-Lab/Humming_Bird_Detection
 edit_uri: edit/main/docs/
 docs_dir: docs
 copyright: Copyright &copy; 2024 Robin Gutzen

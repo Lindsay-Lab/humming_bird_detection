@@ -24,6 +24,14 @@ reports/**
 .claude/
 .pytest_cache/
 
+# AI agent and personal files
+CLAUDE.md
+INDEX.md
+INDEX_v0.md
+.docs/
+Proposal*
+models/wandb-screenshot*.png
+
 # snakemake logs
 .snakemake
 

@@ -8,8 +8,6 @@ dependencies:
   - isort
   - pip
   - setuptools
-  - typer
-  - loguru
   - ipython
   - jupyterlab
   - matplotlib
@@ -19,5 +17,4 @@ dependencies:
   - scikit-learn
   - pip:
     - python-dotenv
-    - mkdocs
     - -e .
