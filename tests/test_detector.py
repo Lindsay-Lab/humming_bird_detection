@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import torch
 
-from humming_bird_detection.models.detector import BirdDetector, Detection
+from humming_bird_detection.models.detector import BirdDetector, Detection, build_detector
 
 
 def _make_boxes(rows: list[list[float]]) -> MagicMock:
@@ -140,3 +140,21 @@ def test_wrong_class_name_logs_warning(caplog):
                 bird_class_id=14,
             )
     assert any("bird_class_id" in r.message for r in caplog.records)
+
+
+def test_build_detector_factory():
+    """build_detector() constructs a BirdDetector from a config dict."""
+    cfg = {
+        "detector": {
+            "model": "yolo11n.pt",
+            "bird_class_id": 14,
+            "confidence_threshold": 0.3,
+        }
+    }
+    with patch("humming_bird_detection.models.detector.YOLO") as mock_yolo_cls:
+        mock_yolo_cls.return_value.names = {14: "bird"}
+        d = build_detector(cfg)
+    assert isinstance(d, BirdDetector)
+    assert d.bird_class_id == 14
+    assert d.confidence_threshold == 0.3
+    assert d.slice_size is None
