@@ -39,8 +39,9 @@ JPEG on disk
                │                              │
     ┌──────────▼──────────────────────────────▼──────────────┐
     │ 6. Record assembly  process_image() → dict              │
-    │    filename / date / time / camera / n_birds /          │
-    │    classification_confidence / hummingbird              │
+    │    filename / date / time / camera / bird_index /       │
+    │    detection_confidence / classification_confidence /   │
+    │    is_hummingbird                                        │
     └──────────────────────────┬─────────────────────────────┘
                                │ (skip if no detections)
                                ▼

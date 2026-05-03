@@ -27,7 +27,7 @@ def process_image(
 
     Returns one record per detected bird (empty list if no birds detected).
     Each record shares the same metadata (filename, date, time, temperature, camera) and
-    carries per-bird fields: bird_index, n_birds, detection_confidence,
+    carries per-bird fields: bird_index, detection_confidence,
     classification_confidence, and is_hummingbird label.
     """
     image_path = Path(image_path)

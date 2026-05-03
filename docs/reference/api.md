@@ -118,7 +118,6 @@ Process a single image end-to-end.
 | `time` | str \| None | Time from OCR metadata |
 | `camera` | str \| None | Camera ID from OCR metadata |
 | `bird_index` | int | Index of this bird within the image |
-| `n_birds` | int | Total birds detected in this image |
 | `detection_confidence` | float | YOLO detection score |
 | `classification_confidence` | float | Classifier sigmoid probability |
 | `hummingbird` | int | `1` = hummingbird, `0` = other |

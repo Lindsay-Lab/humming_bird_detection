@@ -86,10 +86,12 @@ tests/
 ### Path handling
 Always resolve paths through `project_paths`:
 ```python
-from humming_bird_detection.project_paths import project_paths_class
-project_paths = project_paths_class()
+from humming_bird_detection.project_paths import project_paths
+config_path = project_paths.data.interim / "pipeline.yaml"
+model_dir   = project_paths.models
 ```
-Never construct absolute paths by hand.
+Never construct absolute paths by hand.  To override the root (e.g. on a
+cluster), set the `HBD_ROOT` environment variable before importing the package.
 
 ### Code standards
 - Type hints on every public function and method signature.
@@ -425,8 +427,7 @@ def process_image(
        "date": str | None,
        "time": str | None,
        "camera": str | None,      # camera_id from metadata
-       "n_birds": int,            # number of detections
-       "classification_confidence": float,  # mean confidence across crops
+       "classification_confidence": float,
        "hummingbird": bool,       # True if any crop classified as hummingbird
    }
    ```
@@ -456,7 +457,7 @@ Use `unittest.mock.MagicMock` for `detector` and `classifier`.
   `process_image` returns `None`.
 - `test_process_image_one_bird`: `detector.detect` returns one `Detection`;
   `classifier.predict` returns `[(1, 0.92)]`; assert returned dict contains
-  `"n_birds": 1` and `"classification_confidence"` close to 0.92.
+  `"classification_confidence"` close to 0.92.
 - `test_process_directory_creates_csv` (tmp_path fixture): write two synthetic
   50×50 JPEGs to a temp dir; mock detector/classifier; call
   `process_directory`; assert CSV file exists and has the correct columns.
@@ -588,7 +589,6 @@ hbd train --help
 - Do NOT implement a Snakemake workflow — CLI + Python API is sufficient.
 - Do NOT implement iNaturalist data download — that is a future extension.
 - Do NOT add a web server or REST API.
-- Do NOT modify `project_paths.py`.
 - Training data augmentation is defined in Step 4 and must not be applied at
   inference time.
 - The deduplication step must be reversible (run on the DataFrame, not in-place

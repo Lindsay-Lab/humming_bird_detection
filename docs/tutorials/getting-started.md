@@ -88,7 +88,6 @@ The CSV has one row per detected bird:
 | `hummingbird` | `1` = hummingbird, `0` = other bird |
 | `classification_confidence` | model probability (0–1) |
 | `detection_confidence` | YOLO confidence (0–1) |
-| `n_birds` | total birds detected in this image |
 
 ---
 

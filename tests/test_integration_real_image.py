@@ -115,14 +115,12 @@ def test_pipeline_returns_record(pipeline_result):
 
 
 def test_n_birds_at_least_one(pipeline_result, ground_truth):
-    """At least as many birds detected as in the ground-truth annotation."""
+    """At least one bird record returned when ground truth has a bird."""
     result, _, _ = pipeline_result
-    if not result:
-        pytest.skip("No detection — upstream test already failed.")
     n_gt = len(ground_truth["boxes"])
     assert (
-        result[0]["n_birds"] >= 1
-    ), f"Expected ≥1 bird (GT has {n_gt}), got {result[0]['n_birds']}"
+        len(result) >= 1
+    ), f"Expected ≥1 bird record (GT has {n_gt}), got {len(result)}"
 
 
 def test_metadata_date_parsed(pipeline_result):
@@ -205,7 +203,6 @@ def test_result_has_all_expected_keys(pipeline_result):
         "date",
         "time",
         "camera",
-        "n_birds",
         "classification_confidence",
         "is_hummingbird",
     }

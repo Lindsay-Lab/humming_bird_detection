@@ -78,7 +78,6 @@ def test_process_image_one_bird(tmp_path, mock_detector, mock_classifier):
     assert len(result) == 1
     record = result[0]
     assert record["bird_index"] == 0
-    assert record["n_birds"] == 1
     assert record["detection_confidence"] == pytest.approx(0.8, abs=1e-4)
     assert record["classification_confidence"] == pytest.approx(0.92, abs=1e-4)
     assert record["is_hummingbird"] == 1
@@ -118,7 +117,6 @@ def test_process_directory_creates_csv(tmp_path, mock_detector, mock_classifier)
         "time",
         "camera",
         "bird_index",
-        "n_birds",
         "detection_confidence",
         "classification_confidence",
         "is_hummingbird",
@@ -158,10 +156,6 @@ def test_process_image_multiple_birds(tmp_path, mock_detector, mock_classifier):
     assert result[0]["date"] == result[1]["date"]
     assert result[0]["time"] == result[1]["time"]
     assert result[0]["camera"] == result[1]["camera"]
-
-    # n_birds reflects total count in the image
-    assert result[0]["n_birds"] == 2
-    assert result[1]["n_birds"] == 2
 
     # Per-bird fields are distinct
     assert result[0]["bird_index"] == 0
@@ -209,7 +203,6 @@ def test_process_directory_multiple_birds_per_image(
     # 2 birds × 2 images = 4 rows
     assert len(df) == 4
     assert list(df["bird_index"]) == [0, 1, 0, 1]
-    assert all(df["n_birds"] == 2)
 
 
 # ---------------------------------------------------------------------------
