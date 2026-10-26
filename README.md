@@ -4,7 +4,7 @@
 [![Lint](https://github.com/Lindsay-Lab/Humming_Bird_Detection/actions/workflows/black.yml/badge.svg)](https://github.com/Lindsay-Lab/Humming_Bird_Detection/actions/workflows/black.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 
 Automated detection and classification of hummingbirds in wildlife camera-trap images.
 

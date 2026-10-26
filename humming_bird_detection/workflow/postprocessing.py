@@ -124,6 +124,181 @@ def flag_duplicates(df: pd.DataFrame, window_seconds: float) -> pd.DataFrame:
     return result
 
 
+def flag_suspected_duplicates(
+    df: pd.DataFrame, window_seconds: float = 60
+) -> pd.DataFrame:
+    """Flag composition-based suspected duplicates within a time window.
+
+    Within each (camera, date, minute) group, photos whose bird-composition
+    signature — (num_hummingbirds, num_other) — matches another photo in the
+    same minute are considered candidates.  Among N candidates with identical
+    composition, only ``ceil(N / 3)`` are kept; the remainder are flagged as
+    suspected duplicates.
+
+    The rule encodes: 1 photo → count 1; 2–3 → count 1; 4–6 → count 2;
+    7–9 → count 3; and so on (``math.ceil(N / 3)``).
+
+    All bird-level rows belonging to the same filename share the same flag.
+
+    Parameters
+    ----------
+    df:
+        Bird-level DataFrame (one row per bird).  Must contain columns
+        ``filename``, ``camera``, ``date``, ``time``, ``is_hummingbird``.
+    window_seconds:
+        Time window in seconds within which photos are grouped.  Default 60
+        groups photos taken in the same clock minute, which is the natural
+        resolution of the OCR metadata.
+
+    Returns
+    -------
+    pd.DataFrame
+        A copy of *df* with an added ``is_suspected_duplicate`` boolean column.
+    """
+    import math
+
+    if df.empty:
+        return df.assign(is_suspected_duplicate=pd.Series(dtype=bool))
+
+    # --- Build per-photo composition signature ---
+    # Count birds per filename, split by class.
+    photo_stats = (
+        df.groupby("filename")
+        .agg(
+            n_hummingbird=("is_hummingbird", lambda x: int((x == 1).sum())),
+            n_other=("is_hummingbird", lambda x: int((x == 0).sum())),
+        )
+        .reset_index()
+    )
+    # Compose a string signature so grouping is trivial.
+    photo_stats["_comp_sig"] = photo_stats.apply(
+        lambda r: f"HB{r['n_hummingbird']}_OT{r['n_other']}", axis=1
+    )
+
+    # --- Attach camera, datetime, and minute bucket ---
+    first_rows = df.drop_duplicates(subset="filename")[
+        ["filename", "camera", "date", "time"]
+    ]
+    photo_stats = photo_stats.merge(first_rows, on="filename", how="left")
+
+    dt_series = pd.to_datetime(
+        photo_stats["date"].fillna("") + " " + photo_stats["time"].fillna(""),
+        format=_DATE_TIME_FORMAT,
+        errors="coerce",
+    )
+    photo_stats["_dt"] = dt_series
+    photo_stats["_minute_bucket"] = dt_series.dt.floor(f"{window_seconds}s")
+
+    # --- Group by (camera, date, minute bucket, composition signature) ---
+    group_keys = ["camera", "_minute_bucket", "_comp_sig"]
+    # Fill NA camera so NaN groups don't collapse unexpectedly.
+    photo_stats["_cam_fill"] = photo_stats["camera"].fillna("__UNKNOWN__")
+
+    is_suspected: dict[str, bool] = {}
+
+    for (_cam, _bucket, _sig), group in photo_stats.groupby(
+        ["_cam_fill", "_minute_bucket", "_comp_sig"], dropna=False
+    ):
+        n = len(group)
+        keep_n = max(1, math.ceil(n / 3))
+        # Keep the first `keep_n` photos (sorted by datetime then filename for
+        # deterministic tie-breaking); flag the rest.
+        sorted_fnames = group.sort_values(
+            ["_dt", "filename"], na_position="last"
+        )["filename"].tolist()
+        for i, fname in enumerate(sorted_fnames):
+            is_suspected[fname] = i >= keep_n
+
+    result = df.copy()
+    result["is_suspected_duplicate"] = result["filename"].map(is_suspected).fillna(False)
+    n_sus = int(result["is_suspected_duplicate"].sum())
+    logger.info(
+        "Suspected-duplicate flagging (window=%.0fs, ceil(N/3) rule): "
+        "%d/%d records flagged",
+        window_seconds,
+        n_sus,
+        len(result),
+    )
+    return result
+
+
+def aggregate_to_photos(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate bird-level records to one row per photo.
+
+    The returned DataFrame has columns:
+
+    - ``filename``, ``date``, ``time``, ``temperature``, ``camera``
+      (taken from the first row of each photo).
+    - ``num_total_birds``, ``num_hummingbirds``, ``num_other``
+      (counts per photo).
+    - ``mean_detection_conf``, ``max_detection_conf``,
+      ``mean_classification_conf``, ``max_classification_conf``
+      (aggregated confidence values).
+    - ``has_hummingbird`` — True if at least one bird in the photo was
+      classified as a hummingbird.
+    - ``is_duplicate``, ``is_suspected_duplicate`` — propagated from
+      bird-level flags when present.
+
+    Parameters
+    ----------
+    df:
+        Bird-level DataFrame (one row per bird).
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per unique filename.
+    """
+    if df.empty:
+        return pd.DataFrame(
+            columns=[
+                "filename",
+                "date",
+                "time",
+                "temperature",
+                "camera",
+                "num_total_birds",
+                "num_hummingbirds",
+                "num_other",
+                "mean_detection_conf",
+                "max_detection_conf",
+                "mean_classification_conf",
+                "max_classification_conf",
+                "has_hummingbird",
+            ]
+        )
+
+    # Build named aggregation kwargs for pandas groupby().agg().
+    agg_kwargs: dict[str, tuple[str, str | Callable]] = {
+        "date": ("date", "first"),
+        "time": ("time", "first"),
+        "temperature": ("temperature", "first"),
+        "camera": ("camera", "first"),
+        "num_total_birds": ("bird_index", "count"),
+        "num_hummingbirds": ("is_hummingbird", lambda x: int((x == 1).sum())),
+        "num_other": ("is_hummingbird", lambda x: int((x == 0).sum())),
+        "has_hummingbird": ("is_hummingbird", lambda x: (x == 1).any()),
+        "mean_detection_conf": ("detection_confidence", "mean"),
+        "max_detection_conf": ("detection_confidence", "max"),
+        "mean_classification_conf": ("classification_confidence", "mean"),
+        "max_classification_conf": ("classification_confidence", "max"),
+    }
+
+    # Propagate duplicate flags if present.
+    for col in ["is_duplicate", "is_suspected_duplicate"]:
+        if col in df.columns:
+            agg_kwargs[col] = (col, "first")
+
+    result = df.groupby("filename", sort=False).agg(**agg_kwargs).reset_index()
+
+    # Ensure integer counts.
+    for col in ["num_total_birds", "num_hummingbirds", "num_other"]:
+        if col in result.columns:
+            result[col] = result[col].astype(int)
+
+    return result
+
+
 def apply_postprocessors(
     df: pd.DataFrame, processors: list[PostProcessor]
 ) -> pd.DataFrame:
@@ -143,11 +318,19 @@ def build_postprocessors(cfg: dict) -> list[PostProcessor]:
 
     ``deduplication`` section present
         :func:`flag_duplicates` with ``window_seconds`` from config.
+
+    ``suspected_duplicates`` section present
+        :func:`flag_suspected_duplicates` with ``window_seconds`` from config
+        (default 60, grouping photos within the same clock minute).
     """
     processors: list[PostProcessor] = []
 
     if "deduplication" in cfg:
         window = float(cfg["deduplication"]["window_seconds"])
         processors.append(lambda df, w=window: flag_duplicates(df, w))
+
+    if "suspected_duplicates" in cfg:
+        window = float(cfg["suspected_duplicates"].get("window_seconds", 60))
+        processors.append(lambda df, w=window: flag_suspected_duplicates(df, w))
 
     return processors

@@ -57,6 +57,7 @@ def test_detect_invocation(runner: CliRunner, tmp_path: Path) -> None:
             {
                 "filename": "a.jpg",
                 "is_hummingbird": True,
+                "detection_confidence": 0.85,
                 "classification_confidence": 0.9,
             }
         ]
@@ -99,7 +100,7 @@ def test_detect_no_deduplication_flag(runner: CliRunner, tmp_path: Path) -> None
 
     captured_cfg: list[dict] = []
 
-    def _capture_cfg(input_dir, output_csv, detector, classifier, cfg):
+    def _capture_cfg(input_dir, output_csv, detector, classifier, cfg, **kwargs):
         captured_cfg.append(dict(cfg))
         return pd.DataFrame()
 
@@ -151,7 +152,7 @@ def test_detect_model_override(runner: CliRunner, tmp_path: Path) -> None:
 
     captured_cfg: list[dict] = []
 
-    def _capture(input_dir, output_csv, detector, classifier, cfg):
+    def _capture(input_dir, output_csv, detector, classifier, cfg, **kwargs):
         captured_cfg.append(dict(cfg))
         return pd.DataFrame()
 

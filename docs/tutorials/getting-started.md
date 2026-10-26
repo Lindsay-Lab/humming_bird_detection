@@ -78,27 +78,54 @@ print(df.head())
 
 ## 5. Inspect the output
 
-The CSV has one row per detected bird:
+The pipeline produces two CSVs in your output directory:
+
+- **`observations.csv`** — one row per detected bird. Includes `filename`, `date`, `time`, `camera`, `is_hummingbird`, `classification_confidence`, `detection_confidence`, `is_duplicate`, `is_suspected_duplicate`, and `bbox_x1`/`y1`/`x2`/`y2` (bounding box in original-image pixels).
+- **`observations_per_photo.csv`** — one row per photo. Aggregates bird counts (`num_hummingbirds`, `num_other`), confidence statistics, and duplicate flags.
+
+The bird-level CSV has these columns:
 
 | column | description |
 |--------|-------------|
 | `filename` | source image filename |
 | `date`, `time` | from camera OCR |
+| `temperature` | temperature (F) from OCR |
 | `camera` | camera ID from OCR |
+| `bird_index` | index of this bird within the photo |
+| `bbox_x1/y1/x2/y2` | bounding box in original-image pixels |
 | `is_hummingbird` | `True` = hummingbird, `False` = other bird |
-| `classification_confidence` | model probability (0–1) |
+| `classification_confidence` | P(hummingbird) — NOT general certainty (see note below) |
 | `detection_confidence` | YOLO confidence (0–1) |
+| `is_duplicate` | motion-event duplicate flag |
+| `is_suspected_duplicate` | composition-based duplicate flag |
+
+!!! note "classification_confidence is not certainty"
+    The value stored is the sigmoid probability of the *hummingbird* class — it
+    is high for hummingbirds (~0.9+) and **low** for other birds (~0.0001).
+    The analysis report includes a separate **classifier certainty** metric
+    that folds this to 1.0 = "fully certain about the assigned label" for
+    both classes. Do not average `classification_confidence` across mixed classes.
 
 Example output:
 
-| filename | date | time | camera | is_hummingbird | classification_confidence | detection_confidence |
-|---|---|---|---|---|---|---|
-| WSCT0033_001.JPG | 2024-05-12 | 07:14:03 | WSCT0033 | True | 0.93 | 0.87 |
-| WSCT0033_002.JPG | 2024-05-12 | 07:14:12 | WSCT0033 | False | 0.08 | 0.72 |
+| filename | date | time | camera | bird_index | bbox_x1 | ... | is_hummingbird | classification_confidence | detection_confidence |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WSCT0033_001.JPG | 07 APR 2025 | 07:14 AM | CAMERA 3 | 0 | 240 | ... | True | 0.93 | 0.87 |
+| WSCT0033_002.JPG | 07 APR 2025 | 07:14 AM | CAMERA 3 | 0 | 180 | ... | False | 0.08 | 0.72 |
 
 The classifier distinguishes hummingbirds from other bird species visiting the feeder:
 
 ![Classifier input examples](../assets/images/classification_examples.png)
+
+## 6. Generate an analysis report
+
+```python
+from humming_bird_detection.workflow.analysis import generate_report
+
+print(generate_report(df, cfg))
+```
+
+This prints a comprehensive terminal report covering camera efficiency (blanks vs birds), per-camera breakdowns, hourly and daily activity distributions, confidence statistics, and duplicate analysis.
 
 ---
 

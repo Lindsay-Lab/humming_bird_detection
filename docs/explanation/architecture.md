@@ -79,3 +79,39 @@ The classifier is fine-tuned in two phases:
 | 2 (full) | 6+ | All weights | `lr/10`, cosine annealed to 0 |
 
 Freezing the backbone in phase 1 prevents catastrophic forgetting of ImageNet features while the new head converges. Full fine-tuning in phase 2 adapts low-level features to camera-trap image characteristics.
+
+## Post-processing pipeline
+
+After the four detection/classification stages, two post-processing steps enrich the observation records:
+
+### Motion-event deduplication
+
+Successive images captured within a configurable time window (default 18 s) of the same event are flagged as duplicates. The first image anchors the window; subsequent images within it receive `is_duplicate=True` but do not advance the reference timestamp.
+
+### Composition-based suspected duplicates
+
+Photos taken in the same clock minute at the same camera with the same bird-composition signature — (num_hummingbirds, num_other) — are grouped. Among *N* photos with identical composition, only `ceil(N / 3)` are considered independent observations; the remainder are flagged as `is_suspected_duplicate`. This guards against burst-mode camera captures where multiple near-identical frames are triggered by the same bird visit.
+
+The rule encodes:
+
+| Photos (N) | Kept | Flagged |
+|------------|------|---------|
+| 1 | 1 | 0 |
+| 2–3 | 1 | 1–2 |
+| 4–6 | 2 | 2–4 |
+| 7–9 | 3 | 4–6 |
+
+## Analysis and reporting
+
+The analysis module produces comprehensive summaries from the detection CSV:
+
+- **Camera efficiency** — ratio of photos with birds to total photos processed per camera, with blank-image counts.
+- **Temporal distribution** — hourly and daily activity histograms split by hummingbird vs. other birds, both globally and per camera.
+- **Confidence statistics** — detection and classification confidence distributions, plus Pearson correlation between the two.
+- **Duplicate statistics** — counts and rates for both motion-event and composition-based duplicates.
+
+Results are available as a terminal report (`generate_report`), a machine-readable JSON bundle (`export_summary_json`), and publication-quality PNG plots (`generate_plots`).
+
+### Output files
+
+`process_directory` writes two CSVs: a **bird-level** CSV (one row per detected bird, with post-processed flags and bounding-box coordinates) and a **per-photo** CSV (one row per photo, aggregating bird counts, confidence means/maximums, and duplicate flags). Long runs support incremental writes (immediate `.partial.csv` sidecar) and resume (`--resume` flag) — see the [how-to guide](../how-to/run-pipeline.md).

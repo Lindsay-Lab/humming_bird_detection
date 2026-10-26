@@ -2,13 +2,13 @@
 
 **Automated hummingbird identification from wildlife camera-trap images.**
 
-This package provides a complete pipeline for detecting and classifying hummingbirds in JPEG images from field camera traps. It combines YOLO11n bird detection with a fine-tuned EfficientNetV2-S binary classifier, and extracts metadata (date, time, temperature, camera ID) directly from the OCR strip burned into each image.
+This package provides a complete pipeline for detecting and classifying hummingbirds in JPEG images from field camera traps. It combines YOLO11n bird detection with a fine-tuned EfficientNetV2-S binary classifier, and extracts metadata (date, time, temperature, camera ID) directly from the OCR strip burned into each image.  A comprehensive analysis module produces camera-efficiency statistics, temporal activity distributions, duplicate analysis, and publication-quality plots.
 
 ---
 
 ## How it works
 
-The pipeline transforms every camera-trap JPEG into a structured observation record through four main stages:
+The pipeline transforms every camera-trap JPEG into a structured observation record through four main stages, plus post-processing and analysis:
 
 ![Hummingbird Detection Pipeline](assets/images/pipeline_overview.png)
 
@@ -16,6 +16,8 @@ The pipeline transforms every camera-trap JPEG into a structured observation rec
 2. **Bird detection** — YOLO11n locates every bird bounding box; a SAHI tiled fallback recovers small, distant birds
 3. **Letterbox & resize** — each crop is padded to a square and resized to 224 × 224 px without distortion
 4. **Hummingbird classification** — EfficientNetV2-S outputs a probability score; results are written to CSV
+5. **Post-processing** — motion-event deduplication and composition-based suspected-duplicate flagging
+6. **Analysis & reporting** — camera efficiency, temporal distributions, confidence statistics, and plots
 
 ---
 
@@ -42,14 +44,29 @@ df = process_directory("path/to/images/", "output/observations.csv",
                        detector, classifier, cfg)
 ```
 
+Or via the CLI:
+
+```bash
+# Quick run (~3–5 min on CPU per 160 images)
+hbd detect --input-dir path/to/images/ --output-csv output/observations.csv --no-tiling
+
+# Full run (includes tiled fallback for small/distant birds; ~45–60 min on CPU)
+hbd detect --input-dir path/to/images/ --output-csv output/observations.csv
+```
+
 ---
 
 ## Example output
 
-| filename | date | time | camera | is_hummingbird | classification_confidence |
-|---|---|---|---|---|---|
-| WSCT0025_001.JPG | 2024-06-15 | 08:32:14 | WSCT0025 | True | 0.94 |
-| WSCT0025_002.JPG | 2024-06-15 | 08:33:01 | WSCT0025 | False | 0.12 |
+The pipeline writes two CSVs.  **Bird-level** (one row per detected bird):
+
+| filename | date | time | camera | is_hummingbird | classification_confidence | bbox_x1 | ... | is_suspected_duplicate |
+|---|---|---|---|---|---|---|---|---|---|
+| WSCT0025_001.JPG | 07 APR 2025 | 08:32 AM | CAMERA 3 | True | 0.94 | 240 | ... | False |
+| WSCT0025_002.JPG | 07 APR 2025 | 08:32 AM | CAMERA 3 | True | 0.91 | 180 | ... | True |
+| WSCT0025_003.JPG | 07 APR 2025 | 08:33 AM | CAMERA 3 | False | 0.12 | 1645 | ... | False |
+
+And a companion **per-photo** CSV (`_per_photo.csv`) with one row per photo, aggregating bird counts, confidence means/maximums, and duplicate flags.
 
 ---
 

@@ -155,8 +155,30 @@ class BirdDetector:
             )
         return self._sahi_model
 
+    def _expected_tile_count(self, image: np.ndarray) -> int:
+        """Number of tiles SAHI will produce for *image* at the current settings.
+
+        Mirrors SAHI's slicing arithmetic (stride = slice_size * (1 - overlap))
+        so we can report an accurate tile count in logs without depending on
+        SAHI internals, which do not expose the tile list on the result object.
+        """
+        slice_size = self.slice_size
+        if not slice_size:
+            return 1
+        h, w = image.shape[:2]
+        stride = max(1, int(slice_size * (1 - self.overlap_ratio)))
+
+        def _n(dim: int) -> int:
+            if dim <= slice_size:
+                return 1
+            # ceil((dim - slice_size) / stride) + 1
+            return (dim - slice_size + stride - 1) // stride + 1
+
+        return _n(h) * _n(w)
+
     def _detect_tiled(self, image: np.ndarray) -> list[Detection]:
         """SAHI sliced prediction: tile the image, run YOLO per tile, merge."""
+        n_tiles = self._expected_tile_count(image)
         try:
             result = get_sliced_prediction(
                 image,
@@ -193,11 +215,7 @@ class BirdDetector:
             )
         logger.info(
             "SAHI tiled detection: %d tiles → %d bird detections",
-            (
-                len(result.sliced_image_list)
-                if hasattr(result, "sliced_image_list")
-                else -1
-            ),
+            n_tiles,
             len(detections),
         )
         return detections

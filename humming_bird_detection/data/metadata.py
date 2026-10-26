@@ -61,8 +61,8 @@ def parse_metadata(filename: str, margin: np.ndarray, reader=None) -> PhotoMetad
     results = reader.readtext(margin, detail=0)
     text = " ".join(results)
 
-    def _match(pattern: str, field: str) -> str | None:
-        m = re.search(pattern, text, re.IGNORECASE)
+    def _match(pattern: str, field: str, search_text: str | None = None) -> str | None:
+        m = re.search(pattern, search_text if search_text is not None else text, re.IGNORECASE)
         if m is None:
             logger.warning(
                 "Could not parse field '%s' from '%s'. OCR text: %r",
@@ -73,18 +73,31 @@ def parse_metadata(filename: str, margin: np.ndarray, reader=None) -> PhotoMetad
             return None
         return m.group(1)
 
-    # Temperature: digits followed by optional whitespace and a Fahrenheit marker.
-    # The pattern accepts F, single/smart quotes ('), and double/smart quotes (").
-    # Only Fahrenheit is supported; the cameras this project targets report in °F.
-    temp_raw = _match(r"(\d+)\s*[F'`\"]", "temperature")
+    # --- Temperature ---
+    # The cameras this project targets print the ambient temperature in °F
+    # immediately before the "CAMERA <n>" label, e.g. "72°F  CAMERA 3".
+    # EasyOCR frequently misreads the "°F" glyph cluster as one of %, P, F,
+    # o, or a stray quote — real captures include "107 %", "100 P", "0 82 %".
+    # We therefore accept any of those trailing markers.  The search is
+    # restricted to the text *before* the CAMERA token so that the two-digit
+    # minute portion of the timestamp (which is also followed by "PM"/"P")
+    # cannot be mistaken for a temperature reading.
+    temp_head = re.split(r"CAMERA", text, maxsplit=1, flags=re.IGNORECASE)[0]
+    temp_marker = r"(\d{1,3})\s*[FfPp%'`\"°o]"
+    temp_raw = _match(temp_marker, "temperature", search_text=temp_head or text)
     temperature = float(temp_raw) if temp_raw is not None else None
 
     # Camera ID: literal word CAMERA followed by one or more digits.
     camera_id = _match(r"(CAMERA\s+\d+)", "camera_id")
     # Date: 1–2 digit day, 3-letter uppercase month abbreviation, 4-digit year.
     date = _match(r"(\d{1,2}\s+[A-Z]{3}\s+\d{4})", "date")
-    # Time: 12-hour format with AM/PM; tolerates missing space before meridiem.
-    time = _match(r"(\d{1,2}\s*:\s*\d{2}\s*[AP]M)", "time")
+    # Time: 12-hour clock with AM/PM.  OCR spacing around the colon and before
+    # the meridiem is unreliable (e.g. "02 : 28PM", "10 :55AM"), so we capture
+    # loosely and then normalise to a canonical "HH:MM AM/PM" string that
+    # downstream ``strptime`` parsing (deduplication, hourly/daily activity)
+    # can consume.
+    time_raw = _match(r"(\d{1,2}\s*:\s*\d{2}\s*[AP]M)", "time")
+    time = _normalize_time(time_raw)
 
     return PhotoMetadata(
         filename=filename,
@@ -93,3 +106,22 @@ def parse_metadata(filename: str, margin: np.ndarray, reader=None) -> PhotoMetad
         date=date,
         time=time,
     )
+
+
+def _normalize_time(raw: str | None) -> str | None:
+    """Normalise an OCR time string to canonical ``HH:MM AM/PM`` form.
+
+    EasyOCR emits inconsistent spacing around the colon and before the
+    meridiem (``02 : 28PM``, ``10 :55AM``, ``6:5 AM``).  We strip all internal
+    whitespace, then re-emit a zero-padded 12-hour time with a single space
+    before AM/PM so that ``datetime.strptime(..., "%d %b %Y %I:%M %p")``
+    succeeds.  Returns None when *raw* is None or cannot be interpreted.
+    """
+    if raw is None:
+        return None
+    compact = re.sub(r"\s+", "", raw).upper()
+    m = re.match(r"(\d{1,2}):(\d{2})([AP]M)", compact)
+    if m is None:
+        return None
+    hour = int(m.group(1))
+    return f"{hour:02d}:{m.group(2)} {m.group(3)}"

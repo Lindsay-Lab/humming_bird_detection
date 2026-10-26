@@ -34,5 +34,9 @@ training:
 deduplication:
   window_seconds: 18       # records <= this many seconds apart are duplicates
 
+suspected_duplicates:
+  window_seconds: 60       # TUNABLE: group photos within this many seconds;
+                           # 60 groups within the same clock minute
+
 preprocessing:
   pad_fraction: 0.10       # add 10 % padding around YOLO bbox

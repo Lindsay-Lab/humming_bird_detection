@@ -1,0 +1,29 @@
+{
+  "run_id": "20260702_155236",
+  "timestamp_utc": "2026-07-02T16:01:49.137703+00:00",
+  "slurm_job_id": "12277508",
+  "git_commit": "eb4ac5f93b868ba3c15554dd838e3348b62d054d",
+  "wandb": {
+    "run_id": "rdggn8ui",
+    "run_url": "https://wandb.ai/rgutzen/hummingbird-detection/runs/rdggn8ui",
+    "project": "hummingbird-detection",
+    "entity": null
+  },
+  "hyperparameters": {
+    "epochs": 50,
+    "batch_size": 128,
+    "lr": 0.0012,
+    "weight_decay": 0.0001,
+    "early_stopping_patience": 5,
+    "seed": 7
+  },
+  "data": {
+    "train_dir": "data/interim/train_data/train",
+    "val_dir": "data/interim/train_data/val"
+  },
+  "results": {
+    "best_val_loss": 0.065759265611709,
+    "best_epoch": 7
+  },
+  "output_path": "/scratch/rg5022/Humming_Bird_Detection/models/hummingbird_classifier_20260702_155236.pt"
+}

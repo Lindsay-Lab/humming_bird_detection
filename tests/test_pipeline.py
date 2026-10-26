@@ -241,3 +241,94 @@ def test_process_directory_empty_dir_returns_empty_csv(
     df = process_directory(img_dir, output_csv, mock_detector, mock_classifier, _CFG)
     assert output_csv.exists()
     assert len(df) == 0
+
+
+# ---------------------------------------------------------------------------
+# Incremental writes / resume
+# ---------------------------------------------------------------------------
+
+
+def _patched_meta():
+    """Context manager patching parse_metadata to avoid loading EasyOCR."""
+    from humming_bird_detection.data.metadata import PhotoMetadata
+
+    p = patch("humming_bird_detection.workflow.pipeline.parse_metadata")
+    mock_meta = p.start()
+    mock_meta.return_value = PhotoMetadata(
+        filename="x.jpg", temperature=None, camera_id=None, date=None, time=None
+    )
+    return p
+
+
+def test_process_directory_removes_partial_on_success(
+    tmp_path, mock_detector, mock_classifier
+):
+    """A successful run cleans up its .partial.csv sidecar."""
+    img_dir = tmp_path / "input"
+    img_dir.mkdir()
+    _make_mock_image(img_dir / "a.jpg")
+    output_csv = tmp_path / "out.csv"
+
+    mock_detector.detect.return_value = [Detection(bbox=(0, 0, 20, 20), confidence=0.8)]
+    mock_classifier.predict.return_value = [(1, 0.9)]
+
+    p = _patched_meta()
+    try:
+        process_directory(img_dir, output_csv, mock_detector, mock_classifier, _CFG)
+    finally:
+        p.stop()
+
+    partial = tmp_path / "out.partial.csv"
+    assert not partial.exists()
+    assert output_csv.exists()
+
+
+def test_process_directory_resume_skips_processed(
+    tmp_path, mock_detector, mock_classifier
+):
+    """With resume=True, images already in the partial sidecar are not reprocessed."""
+    img_dir = tmp_path / "input"
+    img_dir.mkdir()
+    _make_mock_image(img_dir / "a.jpg")
+    _make_mock_image(img_dir / "b.jpg")
+    output_csv = tmp_path / "out.csv"
+
+    # Pre-seed a partial file as if "a.jpg" was already processed (1 bird).
+    from humming_bird_detection.workflow.pipeline import _RECORD_FIELDS
+
+    seed = {
+        "filename": "a.jpg",
+        "bird_index": 0,
+        "detection_confidence": 0.8,
+        "classification_confidence": 0.9,
+        "is_hummingbird": True,
+    }
+    partial = tmp_path / "out.partial.csv"
+    partial.write_text(
+        ",".join(_RECORD_FIELDS)
+        + "\n"
+        + ",".join(str(seed.get(f, "")) for f in _RECORD_FIELDS)
+        + "\n"
+    )
+
+    mock_detector.detect.return_value = [Detection(bbox=(0, 0, 20, 20), confidence=0.7)]
+    mock_classifier.predict.return_value = [(1, 0.95)]
+
+    p = _patched_meta()
+    try:
+        df = process_directory(
+            img_dir,
+            output_csv,
+            mock_detector,
+            mock_classifier,
+            _CFG,
+            resume=True,
+        )
+    finally:
+        p.stop()
+
+    # Only b.jpg should have been passed to the detector (a.jpg was resumed).
+    assert mock_detector.detect.call_count == 1
+    # Both images represented in the final frame.
+    assert set(df["filename"]) == {"a.jpg", "b.jpg"}
+    assert df.attrs["total_images"] == 2

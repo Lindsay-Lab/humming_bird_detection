@@ -17,7 +17,7 @@ All settings live in `data/interim/pipeline.yaml`. Values marked **TUNABLE** are
 | `model_dir` | str | `"models/YOLO"` | Directory containing the YOLO checkpoint, relative to project root. |
 | `bird_class_id` | int | `14` | COCO class index for "bird". Should not need changing unless using a custom YOLO model. |
 | `confidence_threshold` | float | `0.3` | **TUNABLE.** Minimum YOLO detection score. Lower values catch more birds (higher recall, lower precision). |
-| `slice_size` | int or `null` | `1280` | **TUNABLE.** SAHI tile size in pixels. Set to `null` to disable tiling (faster but may miss small subjects). |
+| `slice_size` | int or `null` | `1280` | **TUNABLE.** SAHI tile size in pixels. Set to `null` to disable tiling (faster but may miss small subjects). **Runtime note:** tiling only runs as a fallback when the direct full-image pass finds nothing, so *blank* images bear the full tiling cost — 15–80 s each on CPU vs ~1 s with tiling disabled. The `--no-tiling` CLI flag overrides this to `null` per run. |
 | `overlap_ratio` | float | `0.2` | **TUNABLE.** Fractional overlap between adjacent SAHI tiles. Larger values reduce missed detections at tile boundaries. |
 | `nms_iou_threshold` | float | `0.5` | **TUNABLE.** IoU threshold for SAHI post-NMS tile merge. Lower values keep more boxes — reduce to ~0.3 if two nearby birds are incorrectly merged. |
 
@@ -49,7 +49,13 @@ Used by `scripts/train_classifier.py` and overridable via CLI flags.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `window_seconds` | int | `18` | **TUNABLE.** Records within this time window are considered duplicates of the same event. |
+| `window_seconds` | int | `18` | **TUNABLE.** Records within this time window are considered duplicates of the same motion event. |
+
+## `suspected_duplicates`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `window_seconds` | int | `60` | **TUNABLE.** Photos within this time window at the same camera with identical bird-composition signatures are grouped for `ceil(N/3)` reduction. Default 60 groups photos taken in the same clock minute. |
 
 ## `preprocessing`
 
